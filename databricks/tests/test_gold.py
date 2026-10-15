@@ -291,3 +291,42 @@ def test_gold_keys_are_unique(run_gold, name):
     df = getattr(gold, name)
     key = list(tables.GOLD_TABLES[name].key)
     assert df.count() == df.select(*key).distinct().count()
+
+
+# ------------------------------------------------------------------ daily additive tables
+
+
+def test_daily_metrics_reaggregate_exactly_to_rollups(run_gold):
+    """Summing the daily rows must reproduce the rolled-up metrics (the dashboard relies on it)."""
+    import math
+
+    gold = run_gold(_regular_trains("30256", 21, 8, 5) + [Train("901", "30255", at(25), bias_seconds=120)])
+    daily = gold.daily_line_metrics.collect()
+    scored = sum(r.scored_predictions for r in daily)
+    mae = sum(r.abs_error_sum_seconds for r in daily) / scored
+    acc = gold.prediction_accuracy.where(
+        "station_id = '41320' AND route_code = 'ALL' AND horizon_bucket = 'ALL' AND rush_period = 'ALL'"
+    ).first()
+    assert scored == acc.predictions
+    assert mae == pytest.approx(acc.mean_abs_error_seconds, abs=0.06)
+
+    red = [r for r in daily if r.route_code == "Red"]
+    n = sum(r.reliable_headways for r in red)
+    s1 = sum(r.headway_sum_minutes for r in red)
+    s2 = sum(r.headway_sumsq_minutes for r in red)
+    hw = [h.headway_minutes for h in gold.headways.where("is_reliable AND route_code = 'Red'").collect()]
+    assert n == len(hw) and s1 / n == pytest.approx(sum(hw) / len(hw))
+    mean = sum(hw) / len(hw)
+    assert math.sqrt((s2 - s1 * s1 / n) / (n - 1)) == pytest.approx(
+        math.sqrt(sum((x - mean) ** 2 for x in hw) / (len(hw) - 1))
+    )
+
+
+def test_daily_horizon_sums_match_accuracy_table(run_gold):
+    gold = run_gold([Train("901", "30255", at(25), bias_seconds=120)])
+    rows = gold.daily_accuracy_by_horizon.collect()
+    acc = {r.horizon_bucket: r for r in gold.prediction_accuracy.where(
+        "station_id = '41320' AND route_code = 'Red' AND rush_period = 'ALL' AND horizon_bucket != 'ALL'").collect()}
+    for bucket, a in acc.items():
+        n = sum(r.scored_predictions for r in rows if r.horizon_bucket == bucket)
+        assert n == a.predictions

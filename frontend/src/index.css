@@ -1,0 +1,127 @@
+@import "tailwindcss";
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+/* Dark variant follows the resolved theme: OS preference unless the user picked one. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ---------------------------------------------------------------- tokens
+   Chart chrome follows the dataviz reference palette. Line colors are CTA's line hues,
+   re-stepped per mode so every pair passes the palette validator (lightness band, chroma floor,
+   colorblind separation, contrast). See docs/dashboard.md. */
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --surface-2: #f2f1ed;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-muted: #6f6d68;
+  --axis-muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.1);
+  --accent: #1c5cab;
+
+  --line-red: #e8364a;
+  --line-blue: #0b98d0;
+  --line-brn: #7d3f16;
+  --line-g: #069a3b;
+  --line-org: #fe5733;
+  --line-p: #7952c8;
+  --line-pink: #dd7aa2;
+  --line-y: #c5b40a;
+
+  --ord-strong: #1c5cab; /* rush hour */
+  --ord-light: #86b6ef;  /* non-rush */
+
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-2: #232321;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --ink-muted: #a3a29b;
+    --axis-muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.1);
+    --accent: #6da7ec;
+    --line-red: #f74c57;
+    --line-blue: #0b98d0;
+    --line-brn: #96562f;
+    --line-g: #14a140;
+    --line-org: #fc4920;
+    --line-p: #906ae3;
+    --line-pink: #ce6c94;
+    --line-y: #a69703;
+    --ord-strong: #6da7ec;
+    --ord-light: #184f95;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --surface-2: #232321;
+  --ink: #f0efec;
+  --ink-2: #c3c2b7;
+  --ink-muted: #a3a29b;
+  --axis-muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.1);
+  --accent: #6da7ec;
+  --line-red: #f74c57;
+  --line-blue: #0b98d0;
+  --line-brn: #96562f;
+  --line-g: #14a140;
+  --line-org: #fc4920;
+  --line-p: #906ae3;
+  --line-pink: #ce6c94;
+  --line-y: #a69703;
+  --ord-strong: #6da7ec;
+  --ord-light: #184f95;
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-muted: var(--ink-muted);
+  --color-grid: var(--grid);
+  --color-axis: var(--axis);
+  --color-accent: var(--accent);
+  --color-hairline: var(--border);
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html, body { background: var(--page); color: var(--ink); }
+body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* Recharts: recessive hairline chrome, text tokens for labels. */
+.recharts-cartesian-grid line { stroke: var(--grid); }
+.recharts-cartesian-axis-line, .recharts-cartesian-axis-tick-line { stroke: var(--axis); }
+.recharts-cartesian-axis-tick-value { fill: var(--axis-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.recharts-label { fill: var(--ink-2); font-size: 11px; }
+.recharts-surface:focus, .recharts-wrapper:focus { outline: none; }
+
+/* MapLibre popup in our tokens. */
+.maplibregl-popup-content { background: var(--surface); color: var(--ink); border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.18); padding: 8px 10px; font-size: 12px; }
+.maplibregl-popup-tip { display: none; }
+.maplibregl-ctrl-attrib { font-size: 10px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

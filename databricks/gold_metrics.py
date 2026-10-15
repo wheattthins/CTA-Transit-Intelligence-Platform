@@ -131,7 +131,8 @@ if silver_observation_count == 0:
     )
 
 gold = build_gold(silver_predictions, silver_observations, config, materialize=write_gold)
-for key in ("prediction_accuracy", "service_consistency", "rush_hour_comparison"):
+for key in ("prediction_accuracy", "service_consistency", "rush_hour_comparison",
+            "daily_line_metrics", "daily_accuracy_by_horizon"):
     write_gold(key, getattr(gold, key))
 
 # COMMAND ----------

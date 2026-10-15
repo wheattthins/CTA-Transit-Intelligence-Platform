@@ -5,8 +5,8 @@ arrival predictions, stores every observation, and (in later phases) processes t
 Databricks Bronze/Silver/Gold lakehouse to analyze prediction accuracy, headways and service
 reliability.
 
-> **Status:** Phases 1–4 done; **Phase 5 (automation and reliability)** built. See
-> [docs/operations.md](docs/operations.md) for scheduling, monitoring and recovery.
+> **Status:** All six phases built: collector → Databricks Bronze/Silver/Gold → automation → dashboard.
+> See [docs/dashboard.md](docs/dashboard.md) for the dashboard and [docs/operations.md](docs/operations.md) for operations.
 > See [docs/architecture.md](docs/architecture.md) for the design and roadmap and
 > [docs/databricks_setup.md](docs/databricks_setup.md) for the Databricks walkthrough.
 
@@ -174,6 +174,18 @@ are git-ignored.
 5. **Error handling:** `CTA_API_KEY` set to a wrong value should log
    `CTA API error 101: Invalid API key`, stop without retrying, and exit with code `1`.
 
+## Dashboard (Phase 6)
+
+```powershell
+python databricks/export_dashboard_data.py   # Gold tables -> frontend/public/data/*.json
+cd frontend; npm install; npm run dev        # http://localhost:5173
+```
+
+React + TypeScript + Vite + Tailwind + Recharts + MapLibre. It covers prediction accuracy by lead time,
+reliability trends, headways (bunching and gaps), rush-hour comparison, an interactive 'L' map,
+data freshness and pipeline health, with every filter re-aggregated exactly in the browser.
+Publishing to GitHub Pages is covered in [docs/dashboard.md](docs/dashboard.md).
+
 ## Running unattended (Phase 5)
 
 ```powershell
@@ -239,13 +251,16 @@ databricks/
   gold_metrics.py               Notebook: inferred arrivals, accuracy, headways, consistency
   pipeline_health.py            Notebook: run status, freshness, coverage -> cta_ops tables
   deploy_job.py                 Sync code + create/update the Lakeflow Job (jobs as code)
+  export_dashboard_data.py      Gold -> static JSON for the dashboard (Databricks or --local)
+frontend/                       React dashboard (src/lib = data + exact aggregation, src/components = UI)
   run_local.py                  Run Bronze -> Silver -> Gold locally on data/raw
   cta_lakehouse/                Tested PySpark transformations + table definitions
   tests/                        Local Spark tests + a CTA polling simulator with known arrivals
-scripts/                        Schedulers for the collector (Windows Task Scheduler, macOS launchd)
+scripts/                        Collector schedulers; map geodata builder
 docs/
   architecture.md               Design decisions and roadmap
   operations.md                 Scheduling, monitoring and recovery runbook
+  dashboard.md                  Dashboard setup, publishing and design decisions
   databricks_setup.md           Phase 2 setup, verification and recovery
 ```
 

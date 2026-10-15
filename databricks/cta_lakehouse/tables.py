@@ -329,6 +329,35 @@ GOLD_COLLECTION_COVERAGE = GoldTableSpec(
     ),
 )
 
+_ADDITIVE_NOTE = "Additive: sum rows for any slice, then divide (see cta_lakehouse/gold.py)"
+
+GOLD_DAILY_LINE_METRICS = GoldTableSpec(
+    name="daily_line_metrics",
+    comment="Gold: per service day, station, line and time period - additive counts and sums for exact filtering. " + _ADDITIVE_NOTE,
+    key=("service_date", "station_id", "route_code", "day_type", "time_period", "is_rush_hour"),
+    columns=_cols(
+        "service_date", "station_id", "route_code", "day_type", "time_period", "is_rush_hour",
+        "train_visits", "inferred_arrivals", "vanished_before_arrival", "flagged_delayed_visits",
+        ("scored_predictions", "Live predictions on high/medium-confidence inferred arrivals"),
+        ("abs_error_sum_seconds", "Sum of |predicted - inferred arrival|"),
+        ("error_sum_seconds", "Sum of signed error (+ = train came sooner than predicted)"),
+        "within_1_min", "within_2_min",
+        "reliable_headways", "headway_sum_minutes",
+        ("headway_sumsq_minutes", "Sum of squared headways (for exact stddev over any slice)"),
+        "bunched_arrivals", "unexpected_gaps",
+    ),
+)
+
+GOLD_DAILY_ACCURACY_BY_HORIZON = GoldTableSpec(
+    name="daily_accuracy_by_horizon",
+    comment="Gold: prediction error sums per service day, station, line, time period and lead-time bucket. " + _ADDITIVE_NOTE,
+    key=("service_date", "station_id", "route_code", "day_type", "time_period", "is_rush_hour", "horizon_bucket"),
+    columns=_cols(
+        "service_date", "station_id", "route_code", "day_type", "time_period", "is_rush_hour", "horizon_bucket",
+        "scored_predictions", "abs_error_sum_seconds", "error_sum_seconds", "within_1_min", "within_2_min",
+    ),
+)
+
 GOLD_TABLES = {
     "train_visits": GOLD_TRAIN_VISITS,
     "prediction_revisions": GOLD_PREDICTION_REVISIONS,
@@ -337,6 +366,8 @@ GOLD_TABLES = {
     "service_consistency": GOLD_SERVICE_CONSISTENCY,
     "rush_hour_comparison": GOLD_RUSH_HOUR_COMPARISON,
     "collection_coverage": GOLD_COLLECTION_COVERAGE,
+    "daily_line_metrics": GOLD_DAILY_LINE_METRICS,
+    "daily_accuracy_by_horizon": GOLD_DAILY_ACCURACY_BY_HORIZON,
 }
 
 

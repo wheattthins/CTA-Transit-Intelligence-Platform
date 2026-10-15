@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "exported_at_ms": 1792078924157,
+  "source": "local:data/raw",
+  "git_commit": "357995a",
+  "history_days": 30,
+  "first_service_date": "2026-10-15",
+  "last_service_date": "2026-10-15",
+  "freshness": {
+    "latest_observation_ms": 1792078120911,
+    "first_observation_ms": 1792070675973,
+    "observations": 77,
+    "successful_observations": 77
+  },
+  "latest_health": null,
+  "files": {
+    "daily_line_metrics": 6,
+    "daily_accuracy_by_horizon": 19,
+    "headways": 50,
+    "recent_arrivals": 65,
+    "visit_outcomes": 12,
+    "coverage": 3,
+    "latest_snapshot": 21,
+    "stations": 4,
+    "pipeline_runs": 0
+  },
+  "notes": [
+    "Arrival times are INFERRED from when trains disappear from CTA's prediction feed; CTA does not publish actual arrival times.",
+    "Accuracy uses live predictions on high/medium-confidence inferred arrivals only."
+  ]
+}

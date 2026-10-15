@@ -292,7 +292,7 @@ because a laptop collector legitimately stops overnight. Set `fail_on_stale` for
 3. **Silver** (built): observations, typed predictions, rejects with reasons, quality warnings
 4. **Gold** (built): inferred arrivals with confidence, prediction revisions and accuracy, headways, bunching and gaps, rush-hour comparison, coverage
 5. **Automation** (built): scheduled collection, Lakeflow Job as code, health and failure tracking, runbook
-6. **Dashboard**: React + TypeScript + Recharts + MapLibre on static Gold exports
+6. **Dashboard** (built): React + TypeScript + Recharts + MapLibre on static Gold exports. See [dashboard.md](dashboard.md)
 
 ## Known limitations
 - CTA predictions are estimates. The API never reports actual arrivals, so arrival times in

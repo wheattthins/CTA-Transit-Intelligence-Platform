@@ -23,20 +23,10 @@ from cta_lakehouse.gold import ALL, build_gold  # noqa: E402
 from cta_lakehouse.silver import transform_bronze_batch, with_processing_time  # noqa: E402
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--raw-dir", type=Path, default=REPO_ROOT / "data" / "raw")
-    parser.add_argument("--show", type=int, default=20, help="Rows to print per table")
-    args = parser.parse_args()
-
-    files = sorted(args.raw_dir.rglob("arrivals_*.json"))
-    if not files:
-        print(f"No raw files under {args.raw_dir}")
-        return 1
-
+def local_spark():
+    """A local Spark session configured like Databricks serverless (UTC, ANSI)."""
     os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
     from pyspark.sql import SparkSession
-    from pyspark.sql import functions as F
 
     spark = (
         SparkSession.builder.master("local[2]")
@@ -48,7 +38,14 @@ def main() -> int:
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("ERROR")
+    return spark
 
+
+def build_local_tables(spark, raw_dir: Path) -> dict:
+    """Run Bronze -> Silver -> Gold on raw files; return {table_name: DataFrame} (checkpointed)."""
+    files = sorted(raw_dir.rglob("arrivals_*.json"))
+    if not files:
+        raise FileNotFoundError(f"No raw files under {raw_dir}")
     now = datetime.now(timezone.utc)
     rows = [(f.read_text(encoding="utf-8"), str(f), f.stat().st_size, now) for f in files]
     landing = spark.createDataFrame(
@@ -56,9 +53,42 @@ def main() -> int:
     )
     bronze = to_bronze_rows(landing, 0).localCheckpoint()
     silver = with_processing_time(transform_bronze_batch(bronze))
-    preds, obs, rejects = (silver.predictions.localCheckpoint(), silver.observations.localCheckpoint(),
-                           silver.rejects.localCheckpoint())
-    gold = build_gold(preds, obs, materialize=lambda _n, df: df.localCheckpoint())
+    out = {
+        "train_tracker_arrivals": bronze,
+        "train_tracker_observations": silver.observations.localCheckpoint(),
+        "train_arrival_predictions": silver.predictions.localCheckpoint(),
+        "train_tracker_rejects": silver.rejects.localCheckpoint(),
+    }
+    gold = build_gold(out["train_arrival_predictions"], out["train_tracker_observations"],
+                      materialize=lambda _n, df: df.localCheckpoint())
+    for name in gold.__dataclass_fields__:
+        out[name] = getattr(gold, name)
+    return out
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--raw-dir", type=Path, default=REPO_ROOT / "data" / "raw")
+    parser.add_argument("--show", type=int, default=20, help="Rows to print per table")
+    args = parser.parse_args()
+
+    if not any(args.raw_dir.rglob("arrivals_*.json")):
+        print(f"No raw files under {args.raw_dir}")
+        return 1
+
+    from pyspark.sql import functions as F
+
+    spark = local_spark()
+    t = build_local_tables(spark, args.raw_dir)
+    bronze, preds, obs, rejects = (t["train_tracker_arrivals"], t["train_arrival_predictions"],
+                                   t["train_tracker_observations"], t["train_tracker_rejects"])
+
+    class _Gold:  # attribute access for the summaries below
+        pass
+
+    gold = _Gold()
+    for k, v in t.items():
+        setattr(gold, k, v)
 
     def section(title: str) -> None:
         print(f"\n=== {title} " + "=" * max(0, 70 - len(title)))

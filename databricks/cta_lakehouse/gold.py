@@ -599,6 +599,60 @@ def build_rush_hour_comparison(headways: DataFrame, revisions: DataFrame, visits
     return vs.join(hw, list(dims), "full_outer").join(acc, list(dims), "full_outer")
 
 
+# --------------------------------------------------------------------------- daily additive metrics
+#
+# Built for filtering (dashboard, ad-hoc SQL): every measure is a COUNT or a SUM, so any slice
+# (date range, lines, day type, rush hour) can be re-aggregated exactly by summing rows:
+#   mean abs error = abs_error_sum_seconds / scored_predictions
+#   mean headway   = headway_sum_minutes / reliable_headways
+#   headway stddev = sqrt((sumsq - sum^2/n) / (n - 1))
+# Percentiles can't be combined this way; they live in the rolled-up tables above.
+
+DAILY_DIMS = ("service_date", "station_id", "route_code", "day_type", "time_period", "is_rush_hour")
+
+
+def build_daily_line_metrics(visits: DataFrame, revisions: DataFrame, headways: DataFrame) -> DataFrame:
+    v = visits.groupBy(*DAILY_DIMS).agg(
+        F.count("*").cast("long").alias("train_visits"),
+        F.sum((F.col("outcome") == "inferred_arrival").cast("long")).alias("inferred_arrivals"),
+        F.sum((F.col("outcome") == "vanished_before_arrival").cast("long")).alias("vanished_before_arrival"),
+        F.sum(F.col("was_flagged_delayed").cast("long")).alias("flagged_delayed_visits"),
+    )
+    abs_err = F.abs("error_seconds")
+    a = accuracy_eligible(revisions).groupBy(*DAILY_DIMS).agg(
+        F.count("*").cast("long").alias("scored_predictions"),
+        F.sum(abs_err).cast("double").alias("abs_error_sum_seconds"),
+        F.sum("error_seconds").cast("double").alias("error_sum_seconds"),
+        F.sum((abs_err <= 60).cast("long")).alias("within_1_min"),
+        F.sum((abs_err <= 120).cast("long")).alias("within_2_min"),
+    )
+    h = headways.where("is_reliable").groupBy(*DAILY_DIMS).agg(
+        F.count("*").cast("long").alias("reliable_headways"),
+        F.sum("headway_minutes").cast("double").alias("headway_sum_minutes"),
+        F.sum(F.col("headway_minutes") * F.col("headway_minutes")).cast("double").alias("headway_sumsq_minutes"),
+        F.sum(F.col("is_bunched").cast("long")).alias("bunched_arrivals"),
+        F.sum(F.col("is_unexpected_gap").cast("long")).alias("unexpected_gaps"),
+    )
+    out = v.join(a, list(DAILY_DIMS), "full_outer").join(h, list(DAILY_DIMS), "full_outer")
+    counts = [
+        "train_visits", "inferred_arrivals", "vanished_before_arrival", "flagged_delayed_visits",
+        "scored_predictions", "within_1_min", "within_2_min", "reliable_headways", "bunched_arrivals", "unexpected_gaps",
+    ]
+    sums = ["abs_error_sum_seconds", "error_sum_seconds", "headway_sum_minutes", "headway_sumsq_minutes"]
+    return out.fillna(0, subset=counts).fillna(0.0, subset=sums)
+
+
+def build_daily_accuracy_by_horizon(revisions: DataFrame) -> DataFrame:
+    abs_err = F.abs("error_seconds")
+    return accuracy_eligible(revisions).groupBy(*DAILY_DIMS, "horizon_bucket").agg(
+        F.count("*").cast("long").alias("scored_predictions"),
+        F.sum(abs_err).cast("double").alias("abs_error_sum_seconds"),
+        F.sum("error_seconds").cast("double").alias("error_sum_seconds"),
+        F.sum((abs_err <= 60).cast("long")).alias("within_1_min"),
+        F.sum((abs_err <= 120).cast("long")).alias("within_2_min"),
+    )
+
+
 # --------------------------------------------------------------------------- entry point
 
 
@@ -611,6 +665,8 @@ class GoldBatch:
     service_consistency: DataFrame
     rush_hour_comparison: DataFrame
     collection_coverage: DataFrame
+    daily_line_metrics: DataFrame
+    daily_accuracy_by_horizon: DataFrame
 
 
 Materialize = Callable[[str, DataFrame], DataFrame]
@@ -646,4 +702,6 @@ def build_gold(
         service_consistency=build_service_consistency(headways, visits),
         rush_hour_comparison=build_rush_hour_comparison(headways, revisions, visits),
         collection_coverage=coverage,
+        daily_line_metrics=build_daily_line_metrics(visits, revisions, headways),
+        daily_accuracy_by_horizon=build_daily_accuracy_by_horizon(revisions),
     )

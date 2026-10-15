@@ -1,0 +1,53 @@
+<!doctype html>
+<!--
+  Source for frontend/public/og-image.png, the 1200x627 link-preview card (LinkedIn, Slack, etc.).
+  Regenerate after editing (macOS):
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --hide-scrollbars \
+      --force-device-scale-factor=1 --window-size=1200,627 \
+      --screenshot=frontend/public/og-image.png "file://$PWD/scripts/og_image.html"
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; box-sizing: border-box; }
+  html, body { width: 1200px; height: 627px; overflow: hidden; }
+  body {
+    background: #0d0d0d; color: #f0efec;
+    font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    position: relative;
+  }
+  .lines { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; }
+  .lines div { height: 9px; }
+  .content { position: absolute; left: 80px; top: 72px; right: 80px; }
+  .eyebrow { display: flex; align-items: center; gap: 16px; font-size: 26px; font-weight: 600;
+             color: #c3c2b7; letter-spacing: 0.02em; }
+  .eyebrow svg { width: 52px; height: 52px; }
+  h1 { margin-top: 44px; font-size: 64px; line-height: 1.08; font-weight: 750; letter-spacing: -0.02em; max-width: 960px; }
+  .sub { margin-top: 26px; font-size: 29px; line-height: 1.4; color: #c3c2b7; max-width: 900px; }
+  .chips { margin-top: 40px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .chip { font-size: 21px; font-weight: 600; padding: 9px 18px; border-radius: 999px;
+          background: #1a1a19; border: 1px solid rgba(255,255,255,0.14); color: #f0efec; }
+</style>
+</head>
+<body>
+  <div class="content">
+    <div class="eyebrow">
+      <svg viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#1c5cab"/><path d="M9 21V11h14v10M9 16h14M12 24l-2 3M20 24l2 3" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/><circle cx="12.5" cy="19" r="1.2" fill="#fff"/><circle cx="19.5" cy="19" r="1.2" fill="#fff"/></svg>
+      CTA Transit Intelligence
+    </div>
+    <h1>How accurate are Chicago&rsquo;s &lsquo;L&rsquo; train arrival predictions?</h1>
+    <p class="sub">Every prediction collected, real arrivals inferred, and accuracy, headways and service gaps measured across all 8 lines.</p>
+    <div class="chips">
+      <span class="chip">Databricks</span><span class="chip">PySpark</span><span class="chip">Delta Lake</span>
+      <span class="chip">Python</span><span class="chip">React + TypeScript</span>
+    </div>
+  </div>
+  <div class="lines">
+    <div style="background:#f74c57"></div><div style="background:#0b98d0"></div>
+    <div style="background:#96562f"></div><div style="background:#14a140"></div>
+    <div style="background:#fc4920"></div><div style="background:#906ae3"></div>
+    <div style="background:#ce6c94"></div><div style="background:#a69703"></div>
+  </div>
+</body>
+</html>

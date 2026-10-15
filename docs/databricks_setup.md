@@ -143,6 +143,10 @@ LATERAL VIEW explode(rejection_reasons) AS reason GROUP BY reason;
 
 ## 8. Run the Gold notebook (you)
 
+> **Run the notebooks one at a time: Bronze → Silver → Gold.** Each reads what the previous one wrote.
+> Started in parallel, Gold reads Silver before it's populated. The notebook now refuses to run on an
+> empty Silver layer. Phase 5's scheduled job enforces the order automatically.
+
 1. **Pull**, then open `databricks/gold_metrics` on Serverless and choose **Run all**.
 2. Expect seven tables in `workspace.cta_gold` and `All hard Gold checks passed`.
 3. Gold is rebuilt from Silver on each run, so re-running is always safe. `DESCRIBE HISTORY

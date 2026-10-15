@@ -100,27 +100,37 @@ def _esc(text: str) -> str:
 def write_gold(key: str, df: DataFrame) -> DataFrame:
     spec: GoldTableSpec = GOLD_TABLES[key]
     full_name = gold_name[key]
+    # Column comments travel in the schema metadata, so the table is written in a single commit
+    # rather than one ALTER COLUMN commit per comment.
+    columns = [
+        F.col(name).alias(name, metadata={"comment": comment}) if comment else F.col(name)
+        for name, comment in spec.columns
+    ]
     (
-        df.select(*spec.column_names)
+        df.select(*columns)
         .write.format("delta")
         .mode("overwrite")
         .option("overwriteSchema", "true")
         .saveAsTable(full_name)
     )
     spark.sql(f"COMMENT ON TABLE {full_name} IS '{_esc(spec.comment)}'")
-    for column, comment in spec.columns:
-        if comment:
-            spark.sql(f"ALTER TABLE {full_name} ALTER COLUMN {column} COMMENT '{_esc(comment)}'")
     print(f"wrote {full_name}")
     return spark.table(full_name)
 
 
-gold = build_gold(
-    spark.table(PREDICTIONS_TABLE),
-    spark.table(OBSERVATIONS_TABLE),
-    config,
-    materialize=write_gold,
-)
+# Guard: Gold must run AFTER Silver has finished, never in parallel with it. (A Lakeflow Job
+# enforces this order with task dependencies; when running notebooks by hand, run them one at a time.)
+silver_predictions = spark.table(PREDICTIONS_TABLE)
+silver_observations = spark.table(OBSERVATIONS_TABLE)
+silver_prediction_count = silver_predictions.count()
+silver_observation_count = silver_observations.count()
+print(f"Silver input: {silver_observation_count} observations, {silver_prediction_count} predictions")
+if silver_observation_count == 0:
+    raise RuntimeError(
+        "Silver is empty. Run bronze_ingestion, then silver_transformation, to completion before gold_metrics."
+    )
+
+gold = build_gold(silver_predictions, silver_observations, config, materialize=write_gold)
 for key in ("prediction_accuracy", "service_consistency", "rush_hour_comparison"):
     write_gold(key, getattr(gold, key))
 
@@ -149,6 +159,8 @@ if bad_inference:
     failures.append(f"{bad_inference} inferred arrivals fall outside their disappearance window")
 if visits.where("outcome != 'inferred_arrival' AND inferred_arrival_utc IS NOT NULL").count():
     failures.append("Non-arrival visits must not have an inferred arrival time")
+if silver_prediction_count > 0 and visits.count() == 0:
+    failures.append(f"Silver has {silver_prediction_count} predictions but Gold produced 0 train visits")
 
 if failures:
     raise AssertionError("Gold checks failed:\n- " + "\n- ".join(failures))

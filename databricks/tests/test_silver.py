@@ -3,7 +3,6 @@ from datetime import datetime
 
 import pytest
 from conftest import make_envelope, sample_response, utc
-
 from cta_lakehouse.silver import transform_bronze_batch
 
 BASE_ETA = sample_response()["ctatt"]["eta"][0]  # Red Line run 822, live, approaching
@@ -59,7 +58,7 @@ def test_scheduled_prediction_without_coordinates_is_valid(bronze_df):
 
 def test_observation_row_counts_reconcile(bronze_df):
     env = make_envelope(_response(_eta(), _eta(rn="999", rt="Nope")), collection_id="c-2")
-    obs, preds, rejects = _run(bronze_df, env)
+    obs, _preds, _rejects = _run(bronze_df, env)
     o = obs[0]
     assert o.eta_count == 2
     assert o.valid_prediction_count == 1 and o.rejected_prediction_count == 1

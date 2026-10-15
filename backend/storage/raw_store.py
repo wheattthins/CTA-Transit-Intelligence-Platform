@@ -26,7 +26,7 @@ import os
 import tempfile
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -77,11 +77,11 @@ def new_collection_id() -> str:
 def _iso_utc(dt: datetime) -> str:
     if dt.tzinfo is None:
         raise ValueError("Timestamps must be timezone-aware")
-    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+    return dt.astimezone(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def build_observation_path(root: Path, metadata: ObservationMetadata) -> Path:
-    ts = metadata.received_at_utc.astimezone(timezone.utc)
+    ts = metadata.received_at_utc.astimezone(UTC)
     partition = (
         root
         / "train_tracker"

@@ -1,5 +1,6 @@
 # Development and test dependencies.
 -r requirements.txt
 pytest>=8.0,<9
+ruff==0.16.9  # Linter; pinned so new rules can't break CI unannounced
 # Local Spark for testing databricks/cta_lakehouse (also needs Java 17+, see docs/setup.md).
 pyspark>=4.0,<5

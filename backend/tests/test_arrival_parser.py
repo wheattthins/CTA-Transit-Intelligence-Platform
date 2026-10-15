@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -8,13 +8,13 @@ from backend.tests.conftest import load_fixture
 
 def test_parse_cta_timestamp_converts_chicago_local_to_utc():
     # October: Chicago is on CDT (UTC-5)
-    assert parse_cta_timestamp("2026-10-15T08:01:05") == datetime(2026, 10, 15, 13, 1, 5, tzinfo=timezone.utc)
+    assert parse_cta_timestamp("2026-10-15T08:01:05") == datetime(2026, 10, 15, 13, 1, 5, tzinfo=UTC)
     # January: CST (UTC-6)
-    assert parse_cta_timestamp("2026-01-15T08:01:05") == datetime(2026, 1, 15, 14, 1, 5, tzinfo=timezone.utc)
+    assert parse_cta_timestamp("2026-01-15T08:01:05") == datetime(2026, 1, 15, 14, 1, 5, tzinfo=UTC)
 
 
 def test_parse_cta_timestamp_accepts_xml_format():
-    assert parse_cta_timestamp("20261015 08:01:05") == datetime(2026, 10, 15, 13, 1, 5, tzinfo=timezone.utc)
+    assert parse_cta_timestamp("20261015 08:01:05") == datetime(2026, 10, 15, 13, 1, 5, tzinfo=UTC)
 
 
 def test_parse_cta_timestamp_rejects_garbage():

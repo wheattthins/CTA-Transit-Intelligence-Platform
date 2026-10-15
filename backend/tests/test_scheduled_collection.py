@@ -1,7 +1,6 @@
 import json
 import os
 import time
-from pathlib import Path
 
 from backend.collectors import train_tracker as tt
 from backend.config.settings import Settings

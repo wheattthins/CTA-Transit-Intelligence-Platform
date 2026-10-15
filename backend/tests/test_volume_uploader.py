@@ -1,8 +1,5 @@
 import json
-import shutil
 from pathlib import Path
-
-import pytest
 
 from backend.config.settings import Settings
 from backend.uploaders import volume_uploader as vu

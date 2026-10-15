@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import requests
@@ -71,7 +71,7 @@ class CTAResponseError(CTAClientError):
 class CTAApiError(CTAClientError):
     """CTA returned a well-formed response with a non-zero errCd."""
 
-    def __init__(self, code: str, message: str, response: "ArrivalsResponse | None" = None):
+    def __init__(self, code: str, message: str, response: ArrivalsResponse | None = None):
         self.code = code
         self.response = response
         super().__init__(f"CTA API error {code}: {message}")
@@ -154,7 +154,7 @@ class CTAClient:
         self, station_id: str, public_params: dict[str, str], attempt: int
     ) -> ArrivalsResponse:
         params = {"key": self._api_key, **public_params}
-        requested_at = datetime.now(timezone.utc)
+        requested_at = datetime.now(UTC)
         started = time.perf_counter()
         try:
             resp = self._session.get(self._base_url, params=params, timeout=self._timeout)
@@ -169,7 +169,7 @@ class CTAClient:
                 f"{redact(str(exc), self._api_key)}"
             ) from None
         elapsed_ms = int((time.perf_counter() - started) * 1000)
-        received_at = datetime.now(timezone.utc)
+        received_at = datetime.now(UTC)
 
         if resp.status_code == 429 or resp.status_code >= 500:
             raise CTATransientError(f"HTTP {resp.status_code} for station {station_id}")

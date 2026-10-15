@@ -9,3 +9,27 @@ testpaths = ["backend/tests", "databricks/tests"]
 # "databricks" lets tests import the cta_lakehouse package the same way the notebooks do.
 pythonpath = [".", "databricks"]
 addopts = "-ra"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+extend-exclude = ["spark-warehouse", "data", "frontend"]
+
+[tool.ruff.lint]
+# Pyflakes + pycodestyle errors, imports, bugbear, pyupgrade, comprehensions, timezone safety,
+# blind excepts and ruff's own checks. Line length is not linted (no formatter is enforced).
+select = ["E4", "E7", "E9", "F", "W", "I", "B", "UP", "C4", "DTZ", "BLE", "S110", "RUF", "PYI", "ISC"]
+ignore = [
+    "C408",    # dict(key=value) calls are kept where they read better than literals
+    "RUF005",  # list concatenation is clearer than unpacking in the test fixtures
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Databricks notebooks: spark, dbutils and display are notebook globals, and dbutils calls are
+# probed best-effort (they raise outside a job or a notebook). Imports follow the sys.path setup cell.
+"databricks/{bronze_ingestion,silver_transformation,gold_metrics,pipeline_health}.py" = ["F821", "E402", "BLE001", "S110"]
+# Tests build naive datetimes on purpose: they stand in for Spark TIMESTAMP_NTZ / session-time values.
+"**/tests/**" = ["DTZ001"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["cta_lakehouse.ops.HealthThresholds"]  # frozen dataclass, safe as a default

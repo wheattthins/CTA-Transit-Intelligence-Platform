@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -76,13 +76,13 @@ def parse_cta_timestamp(value: str) -> datetime:
     value = value.strip()
     for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y%m%d %H:%M:%S"):
         try:
-            naive = datetime.strptime(value, fmt)
+            naive = datetime.strptime(value, fmt)  # noqa: DTZ007 - CTA sends Chicago time with no offset; zone added below
             break
         except ValueError:
             continue
     else:
         raise ValueError(f"Unrecognized CTA timestamp: {value!r}")
-    return naive.replace(tzinfo=CHICAGO_TZ).astimezone(timezone.utc)
+    return naive.replace(tzinfo=CHICAGO_TZ).astimezone(UTC)
 
 
 def _flag(value: Any) -> bool:

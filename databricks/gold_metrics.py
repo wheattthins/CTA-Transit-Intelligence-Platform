@@ -90,7 +90,8 @@ spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{gold_schema} COMMENT 'CTA Gol
 
 # COMMAND ----------
 
-from pyspark.sql import DataFrame, functions as F
+from pyspark.sql import DataFrame
+from pyspark.sql import functions as F
 
 
 def _esc(text: str) -> str:

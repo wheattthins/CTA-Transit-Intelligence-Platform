@@ -12,7 +12,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -46,7 +46,7 @@ def build_local_tables(spark, raw_dir: Path) -> dict:
     files = sorted(raw_dir.rglob("arrivals_*.json"))
     if not files:
         raise FileNotFoundError(f"No raw files under {raw_dir}")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     rows = [(f.read_text(encoding="utf-8"), str(f), f.stat().st_size, now) for f in files]
     landing = spark.createDataFrame(
         rows, "raw_json STRING, source_file_path STRING, source_file_size BIGINT, source_file_modified_at TIMESTAMP"

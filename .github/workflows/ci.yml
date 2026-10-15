@@ -1,5 +1,5 @@
-# Runs the Python test suite (collector + lakehouse transformations) on every push and PR.
-# The frontend is tested and built by dashboard.yml.
+# Lints and tests the Python code (collector + lakehouse transformations) on every push and PR.
+# The frontend is linted, tested and built by dashboard.yml.
 name: CI
 
 on:
@@ -31,6 +31,7 @@ jobs:
           distribution: temurin
           java-version: "17"
       - run: pip install -r requirements-dev.txt
+      - run: ruff check .
       - run: python -m pytest
         env:
           REQUIRE_SPARK: "1"

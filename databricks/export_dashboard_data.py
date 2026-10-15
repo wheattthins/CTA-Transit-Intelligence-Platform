@@ -18,7 +18,7 @@ import argparse
 import json
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -133,7 +133,7 @@ class DatabricksSource:
             part = self.w.statement_execution.get_statement_result_chunk_n(r.statement_id, chunk)
             rows += part.data_array or []
             chunk = part.next_chunk_index
-        return [{name: _coerce(v, t) for (name, t), v in zip(cols, row)} for row in rows]
+        return [{name: _coerce(v, t) for (name, t), v in zip(cols, row, strict=True)} for row in rows]
 
 
 def _coerce(value: Any, type_name: str) -> Any:
@@ -196,12 +196,12 @@ def export(source, out_dir: Path, days: int) -> dict[str, Any]:
     try:
         commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO_ROOT, capture_output=True,
                                 text=True, check=True).stdout.strip()
-    except Exception:
+    except Exception:  # noqa: BLE001 - no git or not a checkout: the manifest just omits the commit
         commit = None
     dates = sorted({r["service_date"] for r in data["daily_line_metrics"]})
     manifest = {
         "schema_version": EXPORT_SCHEMA_VERSION,
-        "exported_at_ms": int(datetime.now(timezone.utc).timestamp() * 1000),
+        "exported_at_ms": int(datetime.now(UTC).timestamp() * 1000),
         "source": source.label,
         "git_commit": commit,
         "history_days": days,
@@ -211,8 +211,10 @@ def export(source, out_dir: Path, days: int) -> dict[str, Any]:
         "latest_health": data["pipeline_runs"][0] if data["pipeline_runs"] else None,
         "files": {k: v for k, v in counts.items() if k != "freshness"},
         "notes": [
-            "Arrival times are INFERRED from when trains disappear from CTA's prediction feed; "
-            "CTA does not publish actual arrival times.",
+            (
+                "Arrival times are INFERRED from when trains disappear from CTA's prediction feed; "
+                "CTA does not publish actual arrival times."
+            ),
             "Accuracy uses live predictions on high/medium-confidence inferred arrivals only.",
         ],
     }

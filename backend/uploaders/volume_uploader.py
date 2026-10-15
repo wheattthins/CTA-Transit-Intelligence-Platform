@@ -146,7 +146,7 @@ def upload_new_files(
                     summary.uploaded.append(remote_path)
                 else:
                     summary.already_present += 1
-            except Exception as exc:  # keep going; report every failure at the end
+            except Exception as exc:  # noqa: BLE001 - keep going; report every failure at the end
                 logger.error("Failed to upload %s: %s", local_path.name, exc)
                 summary.failed.append((remote_path, str(exc)))
     return summary
@@ -191,7 +191,7 @@ def main(argv: Sequence[str] | None = None, store: RemoteFileStore | None = None
             store.ensure_volume(settings.databricks_catalog, settings.databricks_schema, settings.databricks_landing_volume)
         logger.info("Syncing %s -> %s%s", _display(local_root), volume_root, " (dry run)" if args.dry_run else "")
         summary = upload_new_files(store, local_root, volume_root, dry_run=args.dry_run)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - top-level CLI handler: classify and report
         name = type(exc).__name__
         if name in {"Unauthenticated", "PermissionDenied"} or "default auth" in str(exc).lower():
             logger.error(

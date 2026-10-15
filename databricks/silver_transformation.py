@@ -131,7 +131,8 @@ for key, spec in SILVER_TABLES.items():
 # COMMAND ----------
 
 from delta.tables import DeltaTable
-from pyspark.sql import DataFrame, functions as F
+from pyspark.sql import DataFrame
+from pyspark.sql import functions as F
 
 # Counted from the tables afterwards; streaming progress isn't reliable on serverless (see Bronze).
 RUN_STARTED_AT = spark.sql("SELECT date_format(current_timestamp(), \"yyyy-MM-dd'T'HH:mm:ss.SSSSSS\")").first()[0]

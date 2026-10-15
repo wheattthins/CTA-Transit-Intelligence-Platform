@@ -22,7 +22,7 @@ import sys
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -80,7 +80,7 @@ class SampleArrivalsSource:
             raise CTAClientError(
                 f"Sample mode only has fixture data for stations {sorted(self.supported_stations)}"
             )
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return ArrivalsResponse(
             station_id=station_id,
             payload=json.loads(json.dumps(self._payload)),  # deep copy
@@ -103,7 +103,7 @@ class CollectionOutcome:
     error: str | None = None
     error_code: str | None = None
     error_type: str | None = None  # exception class, e.g. CTATransientError
-    attempted_at_utc: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    attempted_at_utc: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 def _metadata_for(response: ArrivalsResponse, *, is_sample: bool) -> ObservationMetadata:

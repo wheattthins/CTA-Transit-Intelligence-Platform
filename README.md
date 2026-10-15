@@ -101,7 +101,7 @@ in [docs/architecture.md](docs/architecture.md).
 | Collection | Python 3.11+, `requests`, `tenacity`, launchd / Task Scheduler |
 | Lakehouse | Databricks (Free Edition), Unity Catalog, Delta Lake, Auto Loader, PySpark, Lakeflow Jobs |
 | Dashboard | React, TypeScript, Vite, Tailwind CSS, Recharts, MapLibre GL |
-| Quality and delivery | pytest, Vitest, GitHub Actions, GitHub Pages |
+| Quality and delivery | pytest, Vitest, Ruff, oxlint, GitHub Actions, GitHub Pages |
 
 ## Quick start
 

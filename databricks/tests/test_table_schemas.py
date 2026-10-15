@@ -2,7 +2,6 @@
 
 import pytest
 from conftest import make_envelope
-
 from cta_lakehouse import tables
 from cta_lakehouse.silver import transform_bronze_batch, with_processing_time
 

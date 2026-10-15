@@ -43,7 +43,6 @@ if _package_dir not in sys.path:
     sys.path.insert(0, _package_dir)
 
 from cta_lakehouse.ops import (
-    UPSTREAM_TASKS,
     HealthThresholds,
     collector_runs_from_text,
     compute_health_metrics,
@@ -104,8 +103,8 @@ spark.sql(OPS_PIPELINE_RUNS.create_sql(T["pipeline_runs"]))
 
 # COMMAND ----------
 
-from pyspark.sql import functions as F
 from pyspark.errors import AnalysisException
+from pyspark.sql import functions as F
 
 try:
     collector_runs = collector_runs_from_text(read_collector_run_files(spark, COLLECTOR_RUNS_PATH))

@@ -31,7 +31,7 @@ import time
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -95,7 +95,7 @@ class PeriodicUploader:
                     self._store = DatabricksVolumeStore()
                 s = self.settings
                 self._store.ensure_volume(s.databricks_catalog, s.databricks_schema, s.databricks_landing_volume)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - any setup failure disables uploads, never collection
                 self.disabled_reason = f"{type(exc).__name__}: {exc}"
                 logger.warning("Uploads disabled for this run (%s). Files stay local.", self.disabled_reason)
                 return None
@@ -115,7 +115,7 @@ class PeriodicUploader:
         self.attempts += 1
         try:
             summary = upload_new_files(store, self.settings.raw_data_dir, self.settings.landing_volume_path)
-        except Exception as exc:  # network down, token expired, ... - try again next time
+        except Exception as exc:  # noqa: BLE001 - network down, token expired, ... - try again next time
             self.failures += 1
             logger.error("Upload attempt failed: %s: %s", type(exc).__name__, exc)
             return
@@ -143,7 +143,7 @@ class RunSummary:
 
     def to_dict(self) -> dict[str, Any]:
         def iso(dt: datetime | None) -> str | None:
-            return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z") if dt else None
+            return dt.astimezone(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z") if dt else None
 
         failures = [o for o in self.outcomes if not o.success]
         up = self.uploader
@@ -181,7 +181,7 @@ class RunSummary:
 
 
 def summary_path(root: Path, summary: RunSummary) -> Path:
-    ts = summary.started_at_utc.astimezone(timezone.utc)
+    ts = summary.started_at_utc.astimezone(UTC)
     return (
         root / "collector_runs" / f"run_date={ts:%Y-%m-%d}"
         / f"collector_run_{ts:%Y%m%dT%H%M%S}Z_{summary.run_id[:8]}.json"
@@ -263,7 +263,7 @@ def main(
     with lock:
         summary = RunSummary(
             run_id=str(uuid.uuid4()),
-            started_at_utc=datetime.now(timezone.utc),
+            started_at_utc=datetime.now(UTC),
             station_ids=station_ids,
             interval_seconds=interval,
             planned_cycles=iterations,
@@ -298,7 +298,7 @@ def main(
         summary.exit_code = EXIT_PARTIAL_FAILURE if (failed or summary.interrupted or not summary.outcomes) else EXIT_OK
         if uploader:
             uploader.upload_now()  # final data upload, so the summary's counts are complete
-        summary.finished_at_utc = datetime.now(timezone.utc)
+        summary.finished_at_utc = datetime.now(UTC)
         path = summary_path(settings.raw_data_dir, summary)
         write_json_exclusive(path, summary.to_dict())
         if uploader:

@@ -13,8 +13,9 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Self
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ class RunLock:
                     return False
                 continue
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                json.dump({"pid": os.getpid(), "acquired_at_utc": datetime.now(timezone.utc).isoformat()}, fh)
+                json.dump({"pid": os.getpid(), "acquired_at_utc": datetime.now(UTC).isoformat()}, fh)
             self._held = True
             return True
         return False
@@ -62,7 +63,7 @@ class RunLock:
             pass
         return True
 
-    def __enter__(self) -> "RunLock":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *exc: object) -> None:

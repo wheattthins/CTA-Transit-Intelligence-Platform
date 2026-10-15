@@ -125,7 +125,8 @@ if reset_checkpoint:
 # COMMAND ----------
 
 from delta.tables import DeltaTable
-from pyspark.sql import DataFrame, functions as F
+from pyspark.sql import DataFrame
+from pyspark.sql import functions as F
 
 # Rows written by this run are counted from the table afterwards (ingested_at_utc >= run start).
 # Streaming progress (query.recentProgress) is not reliably populated on serverless once the

@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 CHICAGO = ZoneInfo("America/Chicago")
@@ -73,7 +73,7 @@ class Poller:
 
 
 def _local(ts_utc: datetime) -> str:
-    return ts_utc.replace(tzinfo=timezone.utc).astimezone(CHICAGO).strftime("%Y-%m-%dT%H:%M:%S")
+    return ts_utc.replace(tzinfo=UTC).astimezone(CHICAGO).strftime("%Y-%m-%dT%H:%M:%S")
 
 
 def _iso_z(ts_utc: datetime) -> str:

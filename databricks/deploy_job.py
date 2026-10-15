@@ -98,7 +98,7 @@ def sync_code(w, items: list[SyncItem], target_dir: str) -> None:
 
 
 def upsert_job(w, settings: dict) -> tuple[int, str]:
-    existing = [j for j in w.jobs.list(name=JOB_NAME)]
+    existing = list(w.jobs.list(name=JOB_NAME))
     if len(existing) > 1:
         raise RuntimeError(f"Found {len(existing)} jobs named {JOB_NAME!r}; delete the duplicates first.")
     if existing:

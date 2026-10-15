@@ -1,11 +1,7 @@
 import json
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
-from pyspark.sql import functions as F
-from simulate import Poller, Train, simulate
-from test_gold import T0, at
-
 from cta_lakehouse import tables
 from cta_lakehouse.gold import build_gold
 from cta_lakehouse.ops import (
@@ -15,6 +11,9 @@ from cta_lakehouse.ops import (
     evaluate_health,
 )
 from cta_lakehouse.silver import transform_bronze_batch, with_processing_time
+from pyspark.sql import functions as F
+from simulate import Poller, Train, simulate
+from test_gold import T0, at
 
 # ------------------------------------------------------------------ health rules (pure Python)
 
@@ -171,19 +170,18 @@ def test_reads_real_collector_summary_files_from_disk(spark, tmp_path):
     """Regression: files are pretty-printed JSON written by the collector itself. A line-by-line
     read (the .option('wholetext') trap) turned each file into unparseable fragments."""
     import sys
-    from datetime import datetime, timezone
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from cta_lakehouse.ops import read_collector_run_files
+
     from backend.jobs.scheduled_collection import RunSummary, summary_path
     from backend.storage.raw_store import write_json_exclusive
 
-    from cta_lakehouse.ops import read_collector_run_files
-
     for i, day in enumerate((14, 15)):
-        s = RunSummary(run_id=f"run-{i}-0000", started_at_utc=datetime(2026, 10, day, 12, tzinfo=timezone.utc),
+        s = RunSummary(run_id=f"run-{i}-0000", started_at_utc=datetime(2026, 10, day, 12, tzinfo=UTC),
                        station_ids=("41320",), interval_seconds=60, planned_cycles=60,
-                       finished_at_utc=datetime(2026, 10, day, 12, 59, tzinfo=timezone.utc), exit_code=0)
+                       finished_at_utc=datetime(2026, 10, day, 12, 59, tzinfo=UTC), exit_code=0)
         write_json_exclusive(summary_path(tmp_path, s), s.to_dict())
     (tmp_path / "collector_runs" / "notes.txt").write_text("ignore me")
 

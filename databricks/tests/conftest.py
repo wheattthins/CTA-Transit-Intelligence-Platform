@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import uuid
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -79,11 +80,11 @@ def make_envelope(
 @pytest.fixture
 def landing_df(spark):
     """Build a DataFrame shaped like the Auto Loader input from raw file texts."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     def _make(*raw_texts: str):
         rows = [
-            (text, f"/Volumes/workspace/cta_bronze/landing/file_{i}.json", len(text), datetime(2026, 10, 15, tzinfo=timezone.utc))
+            (text, f"/Volumes/workspace/cta_bronze/landing/file_{i}.json", len(text), datetime(2026, 10, 15, tzinfo=UTC))
             for i, text in enumerate(raw_texts)
         ]
         return spark.createDataFrame(
@@ -107,6 +108,5 @@ def utc(value):
     """PySpark's collect() turns TIMESTAMP values into *naive local-time* datetimes (the machine's
     time zone). Convert back to naive UTC so assertions don't depend on where tests run.
     TIMESTAMP_NTZ values are returned unchanged by Spark and must not go through this."""
-    from datetime import timezone
 
-    return None if value is None else value.astimezone(timezone.utc).replace(tzinfo=None)
+    return None if value is None else value.astimezone(UTC).replace(tzinfo=None)

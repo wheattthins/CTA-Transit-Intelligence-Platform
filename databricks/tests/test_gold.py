@@ -4,12 +4,11 @@ from datetime import datetime, timedelta
 
 import pytest
 from conftest import utc
-from pyspark.sql import functions as F
-from simulate import Poller, Train, simulate
-
 from cta_lakehouse import tables
 from cta_lakehouse.gold import ALL, build_gold, time_context
 from cta_lakehouse.silver import transform_bronze_batch, with_processing_time
+from pyspark.sql import functions as F
+from simulate import Poller, Train, simulate
 
 # Tuesday 2026-10-13, 12:00 UTC = 07:00 Chicago (CDT): weekday AM peak.
 T0 = datetime(2026, 10, 13, 12, 0, 0)

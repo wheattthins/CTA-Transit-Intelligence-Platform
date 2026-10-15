@@ -5,7 +5,7 @@ arrival predictions, stores every observation, and (in later phases) processes t
 Databricks Bronze/Silver/Gold lakehouse to analyze prediction accuracy, headways and service
 reliability.
 
-> **Status:** Phase 1 (collector) done; Phase 2 (Bronze) and **Phase 3 (Silver)** built.
+> **Status:** Phases 1–3 done; **Phase 4 (Gold: inferred arrivals, accuracy, headways)** built.
 > See [docs/architecture.md](docs/architecture.md) for the design and roadmap and
 > [docs/databricks_setup.md](docs/databricks_setup.md) for the Databricks walkthrough.
 
@@ -180,7 +180,13 @@ python -m backend.uploaders.volume_uploader --dry-run
 python -m backend.uploaders.volume_uploader
 ```
 
-Then run `databricks/bronze_ingestion.py` and `databricks/silver_transformation.py` in your workspace. Full steps, including account and token
+Then run `databricks/bronze_ingestion.py`, `databricks/silver_transformation.py` and `databricks/gold_metrics.py` in your workspace.
+
+To run the whole lakehouse pipeline locally on `data/raw` (no Databricks; needs Java):
+
+```powershell
+python databricks/run_local.py
+``` Full steps, including account and token
 setup, are in [docs/databricks_setup.md](docs/databricks_setup.md).
 
 ## Running the Spark tests
@@ -213,8 +219,10 @@ data/
 databricks/
   bronze_ingestion.py           Notebook: Auto Loader + MERGE into the Bronze Delta table
   silver_transformation.py      Notebook: validate, type and deduplicate into Silver tables
+  gold_metrics.py               Notebook: inferred arrivals, accuracy, headways, consistency
+  run_local.py                  Run Bronze -> Silver -> Gold locally on data/raw
   cta_lakehouse/                Tested PySpark transformations + table definitions
-  tests/                        Local Spark tests (skipped if Java is unavailable)
+  tests/                        Local Spark tests + a CTA polling simulator with known arrivals
 docs/
   architecture.md               Design decisions and roadmap
   databricks_setup.md           Phase 2 setup, verification and recovery
@@ -223,4 +231,6 @@ docs/
 ## Disclaimer
 
 Data is provided by the Chicago Transit Authority. This project is not affiliated with or
-endorsed by the CTA. CTA predictions are estimates, not verified arrival times.
+endorsed by the CTA. CTA predictions are estimates, not verified arrival times, and the arrival
+times in this project's Gold layer are **inferred** from the prediction feed, with stated
+confidence and uncertainty. See [docs/architecture.md](docs/architecture.md#phase-4-decisions-gold).

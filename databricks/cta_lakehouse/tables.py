@@ -173,3 +173,168 @@ SILVER_REJECTS = TableSpec(
         Column("rejected_at_utc", "TIMESTAMP"),
     ),
 )
+
+
+# --------------------------------------------------------------------------- Gold
+#
+# Gold tables are fully recomputed from Silver on every run (overwrite), so their column *types*
+# come from the code. These specs fix the column names, order and documentation, and a unit
+# test asserts that the transformation output matches them.
+
+
+@dataclass(frozen=True)
+class GoldTableSpec:
+    name: str
+    comment: str
+    columns: tuple[tuple[str, str], ...]  # (name, comment)
+    key: tuple[str, ...]  # uniqueness key (checked by the notebook)
+
+    @property
+    def column_names(self) -> list[str]:
+        return [c for c, _ in self.columns]
+
+
+def _cols(*items: str | tuple[str, str]) -> tuple[tuple[str, str], ...]:
+    return tuple((i, "") if isinstance(i, str) else i for i in items)
+
+
+_TIME_CONTEXT = (
+    ("service_date", "Chicago service day (starts 04:00 local)"),
+    ("day_type", "weekday / saturday / sunday (holidays not modeled)"),
+    ("time_period", "early_morning, am_peak, midday, pm_peak, evening, late_night (Chicago clock)"),
+    ("is_rush_hour", "Weekday am_peak (06-09) or pm_peak (16-19)"),
+    "rush_period",
+)
+
+GOLD_TRAIN_VISITS = GoldTableSpec(
+    name="train_visits",
+    comment="Gold: one row per train visit (run approaching a platform) with an INFERRED arrival - not a measured one",
+    key=("visit_id",),
+    columns=_cols(
+        "visit_id", "station_id", "station_name", "stop_id", "stop_description", "route_code", "route_name",
+        ("run_number", "Run numbers repeat: Loop lines pass a station twice, at different stops"),
+        "direction_code", "destination_name",
+        ("first_seen_at_utc", "First CTA snapshot containing the train"),
+        ("last_seen_at_utc", "Last CTA snapshot containing the train"),
+        ("first_missing_at_utc", "Next non-empty snapshot without the train; NULL = unresolved"),
+        ("sightings", "Distinct CTA snapshots containing the train"),
+        ("distinct_predictions", "Distinct predicted arrivals issued for this visit"),
+        "first_predicted_arrival_utc", "final_predicted_arrival_utc",
+        ("total_revision_seconds", "final - first predicted arrival"),
+        ("max_abs_revision_seconds", "Largest single change between consecutive sightings"),
+        "final_is_approaching", "schedule_based_only", "was_flagged_delayed",
+        ("outcome", "inferred_arrival | vanished_before_arrival | unresolved"),
+        ("outcome_reason", "Why a visit is not an inferred arrival (NULL for arrivals)"),
+        ("inferred_arrival_utc", "INFERRED: midpoint of the disappearance window"),
+        ("inferred_arrival_chicago", "INFERRED arrival, Chicago wall-clock time"),
+        ("arrival_window_seconds", "first_missing_at - last_seen_at"),
+        ("arrival_uncertainty_seconds", "+/- half the window"),
+        ("inference_confidence", "high | medium | low | none"),
+        ("confidence_reasons", "Why confidence was downgraded"),
+        ("final_lead_seconds", "final predicted arrival - last_seen_at"),
+        ("final_prediction_offset_seconds", "final predicted - inferred arrival"),
+        *_TIME_CONTEXT,
+    ),
+)
+
+GOLD_PREDICTION_REVISIONS = GoldTableSpec(
+    name="prediction_revisions",
+    comment="Gold: each distinct prediction issued for a train visit, how it changed, and its error vs the inferred arrival",
+    key=("visit_id", "prediction_fingerprint"),
+    columns=_cols(
+        "visit_id", "prediction_fingerprint",
+        ("revision_number", "0 = first prediction seen for the visit"),
+        "station_id", "stop_id", "route_code", "run_number",
+        ("first_seen_at_utc", "CTA snapshot in which this prediction first appeared"),
+        "predicted_at_utc", "predicted_arrival_utc",
+        ("revision_seconds", "Change from the previous distinct prediction (+ = later)"),
+        ("minutes_until_arrival", "CTA's own lead time: arrT - prdt"),
+        "horizon_bucket", "matches_final_prediction", "is_scheduled", "is_delayed",
+        "outcome", "inference_confidence", "inferred_arrival_utc", "arrival_uncertainty_seconds",
+        ("error_seconds", "predicted - INFERRED arrival; + = train came sooner than predicted"),
+        "minutes_before_inferred_arrival",
+        *_TIME_CONTEXT,
+    ),
+)
+
+GOLD_PREDICTION_ACCURACY = GoldTableSpec(
+    name="prediction_accuracy",
+    comment="Gold: ESTIMATED prediction accuracy vs inferred arrivals (high/medium confidence, live predictions only). 'ALL' = rolled up",
+    key=("station_id", "route_code", "horizon_bucket", "rush_period"),
+    columns=_cols(
+        "station_id", "route_code", "horizon_bucket", "rush_period",
+        "predictions", "train_visits",
+        ("mean_error_seconds", "Bias: + = trains tend to arrive sooner than predicted"),
+        "mean_abs_error_seconds", "median_abs_error_seconds", "p90_abs_error_seconds",
+        "pct_within_1_min", "pct_within_2_min",
+        ("avg_arrival_uncertainty_seconds", "Measurement uncertainty of the inferred arrivals"),
+    ),
+)
+
+GOLD_HEADWAYS = GoldTableSpec(
+    name="headways",
+    comment="Gold: time between consecutive INFERRED arrivals of a route at a platform, with reliability and gap flags",
+    key=("visit_id",),
+    columns=_cols(
+        "visit_id", "station_id", "station_name", "stop_id", "stop_description", "route_code", "route_name",
+        "run_number", "inferred_arrival_utc", "arrival_chicago", "inference_confidence",
+        "previous_visit_id", "previous_run_number", "previous_arrival_utc", "previous_confidence",
+        "headway_minutes",
+        ("coverage_ok", "No collection gap between the two arrivals (a missed train would inflate the headway)"),
+        ("is_reliable", "coverage_ok and both arrivals high/medium confidence"),
+        ("typical_headway_minutes", "Median reliable headway for this platform/route/day type/period"),
+        "headway_ratio",
+        ("is_bunched", "Reliable headway < 2 minutes (trains arriving nearly together)"),
+        ("is_unexpected_gap", "Reliable headway >= 2x typical and >= 10 minutes"),
+        *_TIME_CONTEXT,
+    ),
+)
+
+GOLD_SERVICE_CONSISTENCY = GoldTableSpec(
+    name="service_consistency",
+    comment="Gold: headway regularity and reliability signals by line/station/platform/period. 'ALL' = rolled up",
+    key=("route_code", "station_id", "stop_id", "day_type", "time_period"),
+    columns=_cols(
+        "route_code", "station_id", "stop_id", "day_type", "time_period",
+        "train_visits", "inferred_arrivals", "vanished_before_arrival", "pct_flagged_delayed",
+        "avg_max_revision_seconds",
+        "headways", "avg_headway_minutes", "median_headway_minutes", "stddev_headway_minutes",
+        "p90_headway_minutes", "max_headway_minutes", "unexpected_gaps", "bunched_arrivals",
+        ("headway_cv", "stddev/mean headway: 0 = perfectly regular, higher = bunching and gaps"),
+    ),
+)
+
+GOLD_RUSH_HOUR_COMPARISON = GoldTableSpec(
+    name="rush_hour_comparison",
+    comment="Gold: rush hour vs non-rush hour service and prediction accuracy. 'ALL' = rolled up",
+    key=("route_code", "station_id", "rush_period"),
+    columns=_cols(
+        "route_code", "station_id", "rush_period",
+        "train_visits", "pct_flagged_delayed",
+        "headways", "avg_headway_minutes", "headway_cv", "unexpected_gaps",
+        "scored_predictions", "mean_abs_error_seconds", "pct_within_1_min",
+    ),
+)
+
+GOLD_COLLECTION_COVERAGE = GoldTableSpec(
+    name="collection_coverage",
+    comment="Gold: how completely each station was observed, per Chicago clock hour. Low coverage = lower confidence",
+    key=("station_id", "hour_start_chicago"),
+    columns=_cols(
+        "station_id", "service_date", "hour_start_chicago", "day_type", "time_period",
+        "polls", "successful_polls", "failed_polls",
+        ("minutes_covered", "Clock minutes with at least one successful poll"),
+        "coverage_pct",
+        ("max_gap_seconds", "Longest time to the next poll"),
+    ),
+)
+
+GOLD_TABLES = {
+    "train_visits": GOLD_TRAIN_VISITS,
+    "prediction_revisions": GOLD_PREDICTION_REVISIONS,
+    "prediction_accuracy": GOLD_PREDICTION_ACCURACY,
+    "headways": GOLD_HEADWAYS,
+    "service_consistency": GOLD_SERVICE_CONSISTENCY,
+    "rush_hour_comparison": GOLD_RUSH_HOUR_COMPARISON,
+    "collection_coverage": GOLD_COLLECTION_COVERAGE,
+}

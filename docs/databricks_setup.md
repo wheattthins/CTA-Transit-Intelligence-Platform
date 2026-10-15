@@ -1,4 +1,4 @@
-# Databricks setup: Bronze and Silver
+# Databricks setup: Bronze, Silver and Gold
 
 This guide takes you from no Databricks account to a populated Bronze Delta table.
 Steps marked **(you)** need your browser or account. Everything else is a command.
@@ -141,6 +141,29 @@ SELECT reason, count(*) FROM workspace.cta_silver.train_tracker_rejects
 LATERAL VIEW explode(rejection_reasons) AS reason GROUP BY reason;
 ```
 
+## 8. Run the Gold notebook (you)
+
+1. **Pull**, then open `databricks/gold_metrics` on Serverless and choose **Run all**.
+2. Expect seven tables in `workspace.cta_gold` and `All hard Gold checks passed`.
+3. Gold is rebuilt from Silver on each run, so re-running is always safe. `DESCRIBE HISTORY
+   workspace.cta_gold.train_visits` shows previous versions.
+
+Gold needs **continuous** data. Inferred arrivals come from consecutive polls, so collect at least
+an hour or two at a 60 s interval (`--duration-minutes 120`) and include both rush and off-peak
+periods before reading much into the numbers. Check `collection_coverage` first.
+
+```sql
+-- How confident are the inferred arrivals?
+SELECT outcome, inference_confidence, count(*) AS visits, avg(arrival_uncertainty_seconds) AS avg_uncertainty_s
+FROM workspace.cta_gold.train_visits GROUP BY ALL ORDER BY ALL;
+
+-- Accuracy by line and lead time
+SELECT route_code, horizon_bucket, predictions, mean_abs_error_seconds, pct_within_1_min
+FROM workspace.cta_gold.prediction_accuracy
+WHERE station_id != 'ALL' AND route_code != 'ALL' AND rush_period = 'ALL' AND horizon_bucket != 'ALL'
+ORDER BY route_code, horizon_bucket;
+```
+
 ## Recovery
 
 | Problem | Fix |
@@ -151,6 +174,7 @@ LATERAL VIEW explode(rejection_reasons) AS reason GROUP BY reason;
 | Need to rebuild Bronze from scratch | `DROP TABLE workspace.cta_bronze.train_tracker_arrivals;` then run with `reset = true`. The raw files in the volume are the source of truth. |
 | `cloudFiles` / checkpoint errors after changing the read options | Run with `reset = true`. |
 | Silver failed mid-run | Re-run. MERGE skips rows already written. |
+| Gold failed or logic changed | Re-run Gold. It is fully recomputed from Silver. |
 | Silver logic changed | Run Silver with `full_refresh = true`. It is rebuilt from Bronze. |
 | `cta_lakehouse not found` | Run the notebooks from the Git folder (Option A), not a standalone import. |
 | Daily quota exceeded | Compute stops for the day. Data is safe. Re-run tomorrow. |

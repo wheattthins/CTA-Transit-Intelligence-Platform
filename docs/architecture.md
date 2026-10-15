@@ -165,11 +165,99 @@ Bronze after logic changes. Bronze is the replayable source of truth.
 response-level rejects; per observation, valid + rejected = `eta_count`; prediction rows = sum of
 `valid_prediction_count`.
 
+## Phase 4 decisions: Gold
+
+### The core problem
+CTA Train Tracker publishes **predictions only**. It never says when a train actually arrived. Any
+claim about prediction accuracy or headways therefore depends on *inferring* arrivals. The method
+must be defensible, its uncertainty quantified, and its output never presented as measured data.
+
+### Method: the disappearance window
+CTA documents that trains which reach a station drop out of the arrivals feed. For each **train
+visit** (one run approaching one platform):
+
+```
+last_seen_at      CTA snapshot (tmst) of the last response listing the train
+first_missing_at  next successful snapshot for the station without it
+inferred arrival  = midpoint of the window,   uncertainty = ± window / 2
+```
+
+- **Not circular.** The estimate uses *when the train disappeared*, never CTA's predicted times, so
+  scoring predictions against it measures something real. (`final_prediction_offset_seconds` is
+  reported separately as a consistency check.)
+- **CTA snapshot time, not poll time.** CTA caches responses, and two polls can return the same
+  snapshot. Windows use `tmst`.
+- **Visits** are split by `(station, stop, route, run)` and start anew when the predicted arrival
+  jumps by more than 30 minutes or the train goes unseen for more than 60 minutes. That handles Loop
+  lines passing twice and runs that come back hours later.
+
+### Outcomes and confidence
+
+| Outcome | When |
+|---|---|
+| `inferred_arrival` | Disappeared with a window ≤ 15 min, and was not still predicted > 5 min away |
+| `vanished_before_arrival` | Disappeared while still predicted > 5 min after the window, e.g. cancelled, re-routed or renumbered. **Not** counted as an arrival |
+| `unresolved` | Collection ended first, or a collection gap > 15 min spans the disappearance |
+
+| Confidence | Criteria |
+|---|---|
+| **high** | window ≤ 150 s, last seen ≤ 3 min from predicted arrival, ≥ 2 sightings, next snapshot non-empty, live (not schedule-based) |
+| **medium** | window ≤ 300 s, last seen ≤ 10 min out; or a single sighting; or the next snapshot was empty |
+| **low** | anything wider or farther; or schedule-based only |
+
+`confidence_reasons` records every downgrade. Accuracy metrics use **high and medium only**, and
+**live predictions only**: schedule-based predictions are excluded.
+
+**Empty responses.** A failed request proves nothing and is ignored. A successful but empty
+response is accepted as evidence, because a quiet station's last train leaves an empty list behind,
+but it caps confidence at medium since an empty list could also be a glitch.
+
+### Validation without ground truth
+Real data can't validate the method because there is no ground truth. `databricks/tests/simulate.py` therefore
+generates CTA-shaped polling from **known** arrival times, following the documented behaviour
+(listed until arrival, cached snapshots, prediction errors that converge as the train approaches).
+Tests check that the inferred arrival lands within its stated uncertainty, that collection gaps and
+API errors lower confidence, that vanished trains are excluded, and that headways, bunching and gaps
+match the simulated schedule.
+
+The first real run (one hour of Belmont, AM peak) is consistent with CTA's published claim of
+roughly ±1 minute accuracy: Red Line MAE 29 s, with 83% of predictions within 1 minute. That's
+16 trains, so it is indicative only.
+
+### Metrics
+- **Prediction error** = predicted − inferred arrival (+ means the train came sooner than predicted),
+  bucketed by CTA's lead time (0–2, 2–5, 5–10, 10–15, 15–20, 20+ min).
+- **Headway** = time between consecutive inferred arrivals of the same route at the same platform.
+  It is *reliable* only if both arrivals are high/medium confidence and no collection gap (> 3 min) lies
+  between them, because a missed train would double the headway.
+- **Unexpected gap**: reliable headway ≥ 2× the typical (median) headway for that platform, route,
+  day type and period, and ≥ 10 min. Needs ≥ 5 headways to establish "typical".
+- **Bunching**: reliable headway < 2 min.
+- **Consistency**: headway coefficient of variation (stddev / mean). 0 means perfectly even spacing.
+- **Rush hour**: weekdays 06:00–09:00 and 16:00–19:00 Chicago time. Service day starts at 04:00.
+
+### Processing
+Gold is recomputed from Silver on each run and overwritten atomically, because visits span many
+Silver batches. Base tables are written first and read back before aggregation, which keeps query plans
+small (serverless can't cache). At larger scale, recompute only recent service dates with
+`replaceWhere`.
+
+### Limitations
+- Arrivals are inferred, never measured. CTA's documentation suggests trains drop out on arrival,
+  but the exact trigger (arrival vs departure, cache delay) isn't specified, so there may be a small
+  systematic offset that no amount of data from this API can detect.
+- Resolution is bounded by the polling interval: ±30 s at 60 s polling.
+- Holidays are treated as normal weekdays or weekends.
+- Run numbers are CTA's operational IDs and can change mid-trip. Such trains appear as
+  `vanished_before_arrival` plus a new visit.
+- Small samples: rolled-up rows show `predictions` and `train_visits` counts. Read them before
+  trusting a percentage.
+
 ## Roadmap
 1. **Collector** (done)
 2. **Bronze** (built): Auto Loader + MERGE of raw envelopes into a Delta table, deduplicated on `collection_id`
 3. **Silver** (built): observations, typed predictions, rejects with reasons, quality warnings
-4. **Gold**: prediction revisions, *inferred* arrivals with confidence and coverage, headways, rush-hour comparisons
+4. **Gold** (built): inferred arrivals with confidence, prediction revisions and accuracy, headways, bunching and gaps, rush-hour comparison, coverage
 5. **Automation**: scheduled collection, Lakeflow Jobs, freshness and failure tracking
 6. **Dashboard**: React + TypeScript + Recharts + MapLibre on static Gold exports
 

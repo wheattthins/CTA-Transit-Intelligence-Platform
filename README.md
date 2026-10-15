@@ -73,7 +73,24 @@ either one is down the other keeps working, and files simply wait to be processe
 - **Tested.** 177 Python tests, including PySpark transformation tests run on local Spark in CI,
   plus frontend tests for the aggregation math.
 
-The reasoning behind each decision is in [docs/architecture.md](docs/architecture.md).
+## Design decisions
+
+The main trade-offs, what each one costs, and how it would change at larger scale.
+
+| Decision | Instead of | Why, and the cost |
+|---|---|---|
+| **Collect outside Databricks**, connected only through a landing volume | A Databricks job calling the API | Free Edition restricts outbound internet, and decoupling means a Databricks outage never loses observations. *Cost:* two schedulers to operate. |
+| **Keep raw responses unmodified**; Bronze stores each whole file as text | Parsing into typed columns at ingestion | CTA can add or rename fields without breaking ingestion or losing data, and Silver can be rebuilt from Bronze when its logic changes. *Cost:* parsing happens later, in Silver. |
+| **Infer arrivals from when a train disappears** from the feed | Treating the last prediction as the arrival | Scoring predictions against predictions would be circular. *Cost:* each arrival is uncertain by about ±30 s at 60 s polling, so every arrival carries a confidence level. |
+| **Keep the same prediction seen in consecutive polls**, linked by a fingerprint | Deduplicating it away | Each sighting is a real observation, and the arrival inference depends on them. True duplicates (same file twice, same record twice in a response) are still removed. |
+| **Recompute Gold in full** and overwrite atomically | Incremental Gold updates | A train visit spans many Silver batches, so incremental logic would be fragile. *At scale:* recompute only recent service dates with `replaceWhere`. |
+| **No table partitioning** | Partitioning by date | At thousands to low millions of small rows, partitions mean many tiny files, and Delta data skipping is enough. *At scale:* add liquid clustering without code changes. |
+| **Static JSON export** with exact aggregation in the browser | An API server or live warehouse queries | The data is small and changes only when the pipeline runs, so it hosts free on GitHub Pages with no server. *Cost:* the dashboard is as fresh as the last export, and says so. |
+| **Hour-long scheduled collector sessions** | A long-running polling daemon | A crash costs at most an hour, and connection and memory state reset regularly. A lock file prevents overlapping runs. |
+| **Jobs as code with the Databricks SDK**, tagged with the git commit | Asset Bundles or configuring the job in the UI | Same idea as bundles without adding the CLI as a dependency, and the deploy refuses uncommitted changes. |
+
+The full reasoning, including the validation rules, confidence criteria and known limitations, is
+in [docs/architecture.md](docs/architecture.md).
 
 ## Tech stack
 

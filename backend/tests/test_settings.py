@@ -45,3 +45,14 @@ def test_non_integer_env_value_is_config_error(monkeypatch):
     monkeypatch.setenv("CTA_POLL_INTERVAL_SECONDS", "fast")
     with pytest.raises(SettingsError):
         load_settings(env_file=None)
+
+
+def test_databricks_settings_defaults_and_validation(monkeypatch):
+    for name in ("DATABRICKS_CATALOG", "DATABRICKS_SCHEMA", "DATABRICKS_LANDING_VOLUME"):
+        monkeypatch.delenv(name, raising=False)
+    settings = load_settings(env_file=None)
+    assert settings.landing_volume_path == "/Volumes/workspace/cta_bronze/landing"
+
+    monkeypatch.setenv("DATABRICKS_SCHEMA", "bad-name; DROP")
+    with pytest.raises(SettingsError):
+        load_settings(env_file=None)

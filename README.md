@@ -5,8 +5,9 @@ arrival predictions, stores every observation, and (in later phases) processes t
 Databricks Bronze/Silver/Gold lakehouse to analyze prediction accuracy, headways and service
 reliability.
 
-> **Status: Phase 1 — CTA API data collector.** Databricks and the dashboard come later.
-> See [docs/architecture.md](docs/architecture.md) for the design and roadmap.
+> **Status:** Phase 1 (collector) done; **Phase 2 (Databricks Bronze layer)** built.
+> See [docs/architecture.md](docs/architecture.md) for the design and roadmap and
+> [docs/databricks_setup.md](docs/databricks_setup.md) for the Databricks walkthrough.
 
 ## What Phase 1 does
 
@@ -60,6 +61,7 @@ cp .env.example .env
 | `python-dotenv` | Loads settings and the API key from `.env` |
 | `tenacity` | Retry with exponential backoff |
 | `tzdata` | Time zone database so `America/Chicago` works on Windows |
+| `databricks-sdk` | Uploads raw files to a Unity Catalog volume (Phase 2) |
 | `pytest` (dev) | Unit tests |
 
 ## Getting a CTA API key
@@ -169,6 +171,16 @@ are git-ignored.
 5. **Error handling:** `CTA_API_KEY` set to a wrong value should log
    `CTA API error 101: Invalid API key`, stop without retrying, and exit with code `1`.
 
+## Loading data into Databricks (Phase 2)
+
+```powershell
+python -m backend.uploaders.volume_uploader --dry-run
+python -m backend.uploaders.volume_uploader
+```
+
+Then run `databricks/bronze_ingestion.py` in your workspace. Full steps, including account and token
+setup, are in [docs/databricks_setup.md](docs/databricks_setup.md).
+
 ## Project structure
 
 ```
@@ -177,13 +189,18 @@ backend/
   services/cta_client.py        HTTP client: retries, CTA error codes, key redaction
   services/arrival_parser.py    Typed view of eta records, Chicago -> UTC conversion
   storage/raw_store.py          Immutable, partitioned raw JSON writer
+  uploaders/volume_uploader.py  Idempotent upload of raw files to a Databricks volume
   config/settings.py            Environment-driven configuration
   tests/                        pytest suite and fixtures
 data/
   raw/                          Live observations (git-ignored)
   sample_runs/                  Sample-mode output (git-ignored)
   samples/                      SAMPLE fixture (committed, clearly labeled)
-docs/architecture.md            Design decisions and roadmap
+databricks/
+  bronze_ingestion.py           Notebook: Auto Loader + MERGE into the Bronze Delta table
+docs/
+  architecture.md               Design decisions and roadmap
+  databricks_setup.md           Phase 2 setup, verification and recovery
 ```
 
 ## Disclaimer

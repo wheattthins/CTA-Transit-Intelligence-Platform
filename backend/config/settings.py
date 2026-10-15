@@ -37,6 +37,14 @@ class Settings:
     sample_runs_dir: Path = PROJECT_ROOT / "data" / "sample_runs"
     log_level: str = "INFO"
     arrivals_url: str = TRAIN_TRACKER_ARRIVALS_URL
+    # Unity Catalog location raw files are uploaded to: /Volumes/<catalog>/<schema>/<volume>/
+    databricks_catalog: str = "workspace"
+    databricks_schema: str = "cta_bronze"
+    databricks_landing_volume: str = "landing"
+
+    @property
+    def landing_volume_path(self) -> str:
+        return f"/Volumes/{self.databricks_catalog}/{self.databricks_schema}/{self.databricks_landing_volume}"
 
     def require_api_key(self) -> str:
         if not self.api_key:
@@ -109,4 +117,15 @@ def load_settings(env_file: Path | None = PROJECT_ROOT / ".env") -> Settings:
         max_attempts=max_attempts,
         raw_data_dir=_resolve_path(os.getenv("CTA_RAW_DATA_DIR"), PROJECT_ROOT / "data" / "raw"),
         log_level=(os.getenv("LOG_LEVEL") or "INFO").upper(),
+        databricks_catalog=_identifier_env("DATABRICKS_CATALOG", "workspace"),
+        databricks_schema=_identifier_env("DATABRICKS_SCHEMA", "cta_bronze"),
+        databricks_landing_volume=_identifier_env("DATABRICKS_LANDING_VOLUME", "landing"),
     )
+
+
+def _identifier_env(name: str, default: str) -> str:
+    """Unity Catalog names: letters, digits and underscores only (keeps paths/SQL safe)."""
+    value = (os.getenv(name) or default).strip()
+    if not value.replace("_", "").isalnum():
+        raise SettingsError(f"{name} must contain only letters, digits and underscores (got {value!r}).")
+    return value

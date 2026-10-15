@@ -64,12 +64,47 @@ all of this.
 ### Deliberate omissions
 - No infinite polling loop. Sessions are bounded, and continuous collection will be a
   scheduler's job (Phase 5).
-- No `databricks/` or `frontend/` placeholders yet. They will be added when built.
+- No `frontend/` placeholder yet. It will be added when built.
 - `pandas` is not installed yet because nothing in Phase 1 needs it.
+
+## Phase 2 decisions: Bronze
+
+**Landing:** `backend/uploaders/volume_uploader.py` copies `data/raw` into the Unity Catalog volume
+`/Volumes/workspace/cta_bronze/landing/`, keeping the same partition folders. It lists each remote
+partition once and uploads only missing files, so it is idempotent and never overwrites. Files
+marked `is_sample` are refused.
+
+**Table:** `workspace.cta_bronze.train_tracker_arrivals` has one row per API response (per file).
+- `raw_json` holds the **entire file as text**, read with Auto Loader `text` + `wholetext`. If CTA adds,
+  removes or renames a field, Bronze keeps working and loses nothing. Typed parsing of `eta`
+  is Silver's job.
+- Envelope metadata is extracted into columns (`collection_id`, `station_id`, `received_at_utc`,
+  `cta_error_code`, `eta_count`, ...) for deduplication, monitoring and partition-free filtering.
+- Lineage columns: `source_file_path`, `source_file_size`, `source_file_modified_at`,
+  `ingested_at_utc`, `ingestion_batch_id`.
+- Corrupt files are **kept** with `is_parse_error = true` and `record_key = sha2(raw_json)`.
+- Change Data Feed is enabled so Silver can process only new Bronze rows.
+
+**Incremental processing and deduplication:**
+1. The Auto Loader checkpoint means each file is read once.
+2. Inside `foreachBatch`, `MERGE ... ON record_key WHEN NOT MATCHED THEN INSERT` means each
+   observation is stored once, even if the checkpoint is reset or a file is uploaded twice.
+
+**Why not partition the table?** At this volume (thousands to low millions of small rows),
+partitioning would create many tiny files. Delta's data skipping is enough. Liquid clustering on
+`collection_date` can be added later without rewriting code.
+
+**Why a notebook with no shared Python module?** On serverless compute, a notebook's working
+directory isn't guaranteed, so imports from the repo are fragile. Keeping Bronze self-contained
+avoids that. The notebook ends with assertions that fail the run if duplicates exist.
+
+**Testing gap:** the uploader is unit-tested locally. The Spark code needs a Databricks runtime
+(Auto Loader and serverless are Databricks-only) and is verified by running the notebook, whose
+validation cell checks its guarantees.
 
 ## Roadmap
 1. **Collector** (done)
-2. **Bronze**: Auto Loader / `COPY INTO` the raw envelopes into a Delta table, deduplicated on `collection_id`
+2. **Bronze** (built): Auto Loader + MERGE of raw envelopes into a Delta table, deduplicated on `collection_id`
 3. **Silver**: explode `eta`, typed columns, UTC timestamps, Chicago service date, rejected-record table
 4. **Gold**: prediction revisions, *inferred* arrivals with confidence and coverage, headways, rush-hour comparisons
 5. **Automation**: scheduled collection, Lakeflow Jobs, freshness and failure tracking

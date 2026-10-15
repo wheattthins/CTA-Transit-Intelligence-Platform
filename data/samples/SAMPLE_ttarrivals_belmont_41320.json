@@ -5,21 +5,21 @@
     "errNm": null,
     "eta": [
       {
-        "staId": "41320", "stpId": "30256", "staNm": "Belmont", "stpDe": "Service toward 95th/Dan Ryan",
+        "staId": "41320", "stpId": "30256", "staNm": "Belmont", "stpDe": "Service toward 95th or Loop",
         "rn": "822", "rt": "Red", "destSt": "30089", "destNm": "95th/Dan Ryan", "trDr": "5",
         "prdt": "2026-10-15T08:00:05", "arrT": "2026-10-15T08:01:05",
         "isApp": "1", "isSch": "0", "isDly": "0", "isFlt": "0", "flags": null,
         "lat": "41.94612", "lon": "-87.65371", "heading": "178"
       },
       {
-        "staId": "41320", "stpId": "30257", "staNm": "Belmont", "stpDe": "Service toward Kimball or Linden",
+        "staId": "41320", "stpId": "30257", "staNm": "Belmont", "stpDe": "Service toward Kimball",
         "rn": "411", "rt": "Brn", "destSt": "30249", "destNm": "Kimball", "trDr": "1",
         "prdt": "2026-10-15T08:00:02", "arrT": "2026-10-15T08:03:02",
         "isApp": "0", "isSch": "0", "isDly": "0", "isFlt": "0", "flags": null,
         "lat": "41.92577", "lon": "-87.65287", "heading": "355"
       },
       {
-        "staId": "41320", "stpId": "30255", "staNm": "Belmont", "stpDe": "Service toward Howard",
+        "staId": "41320", "stpId": "30255", "staNm": "Belmont", "stpDe": "Service toward Howard or Linden",
         "rn": "917", "rt": "Red", "destSt": "30173", "destNm": "Howard", "trDr": "1",
         "prdt": "2026-10-15T08:00:07", "arrT": "2026-10-15T08:04:07",
         "isApp": "0", "isSch": "0", "isDly": "0", "isFlt": "0", "flags": null,

@@ -18,8 +18,50 @@
 # MAGIC    observations. Duplicates stay out even if the checkpoint is deleted or a file is uploaded twice
 # MAGIC    under another name.
 # MAGIC
-# MAGIC Runs on serverless compute (Databricks Free Edition) with `trigger(availableNow=True)`: it processes
-# MAGIC everything new, then stops. This is batch-style incremental processing that a scheduled job can run.
+# MAGIC The transformation logic lives in `cta_lakehouse/bronze.py` and is unit-tested locally. This notebook
+# MAGIC handles only I/O: reading files, writing Delta, and validating.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 0. Load the project's Python package
+# MAGIC `cta_lakehouse` sits next to this notebook in the Git folder. Registering it with cloudpickle ships its
+# MAGIC code along with the `foreachBatch` function, which serverless compute runs in a separate Python process.
+
+# COMMAND ----------
+
+import os
+import sys
+
+
+def _find_package_dir() -> str:
+    candidates = []
+    try:
+        nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+        nb_dir = os.path.dirname(nb_path)
+        candidates.append(nb_dir if nb_dir.startswith("/Workspace") else f"/Workspace{nb_dir}")
+    except Exception:
+        pass
+    candidates.append(os.getcwd())
+    for candidate in candidates:
+        if os.path.isdir(os.path.join(candidate, "cta_lakehouse")):
+            return candidate
+    raise ImportError(f"cta_lakehouse not found in {candidates}. Run this notebook from the repo's Git folder.")
+
+
+_package_dir = _find_package_dir()
+if _package_dir not in sys.path:
+    sys.path.insert(0, _package_dir)
+
+import cta_lakehouse
+from pyspark import cloudpickle
+
+cloudpickle.register_pickle_by_value(cta_lakehouse)
+
+from cta_lakehouse.bronze import to_bronze_rows
+from cta_lakehouse.tables import BRONZE_ARRIVALS
+
+print(f"Loaded cta_lakehouse from {_package_dir}")
 
 # COMMAND ----------
 
@@ -39,7 +81,7 @@ for name, value in {"catalog": catalog, "schema": schema, "landing_volume": land
 
 spark.conf.set("spark.sql.session.timeZone", "UTC")  # all stored timestamps are UTC
 
-BRONZE_TABLE = f"{catalog}.{schema}.train_tracker_arrivals"
+BRONZE_TABLE = f"{catalog}.{schema}.{BRONZE_ARRIVALS.name}"
 LANDING_PATH = f"/Volumes/{catalog}/{schema}/{landing_volume}/train_tracker/arrivals"
 CHECKPOINT_PATH = f"/Volumes/{catalog}/{schema}/_checkpoints/bronze_train_tracker_arrivals"
 
@@ -52,49 +94,16 @@ print(f"Checkpoint: {CHECKPOINT_PATH}")
 # MAGIC %md
 # MAGIC ## 1. Create the schema, volumes and table (idempotent)
 # MAGIC
-# MAGIC Delta tables in Unity Catalog are addressed by a three-level name, `catalog.schema.table`. Free Edition
-# MAGIC provides the `workspace` catalog. The table schema is declared explicitly rather than inferred so its
-# MAGIC structure is documented and stable. Change Data Feed is enabled so the Silver layer can later read only
-# MAGIC the rows that changed.
+# MAGIC Delta tables in Unity Catalog are addressed by a three-level name, `catalog.schema.table`. The table
+# MAGIC schema is declared explicitly in `cta_lakehouse/tables.py` rather than inferred, and a unit test checks
+# MAGIC that the transformation output matches it. Change Data Feed is enabled for downstream consumers.
 
 # COMMAND ----------
 
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema} COMMENT 'CTA Bronze layer: raw, append-only source data'")
 spark.sql(f"CREATE VOLUME IF NOT EXISTS {catalog}.{schema}.{landing_volume} COMMENT 'Landing zone for raw CTA API files'")
 spark.sql(f"CREATE VOLUME IF NOT EXISTS {catalog}.{schema}._checkpoints COMMENT 'Streaming checkpoints'")
-
-spark.sql(f"""
-CREATE TABLE IF NOT EXISTS {BRONZE_TABLE} (
-  record_key               STRING    NOT NULL COMMENT 'Dedup key: collection_id, or SHA-256 of raw_json if unparseable',
-  collection_id            STRING    COMMENT 'UUID assigned by the collector to this API call',
-  source_system            STRING    COMMENT 'cta_train_tracker (or *_SAMPLE for fixture data)',
-  source_endpoint          STRING    COMMENT 'CTA API endpoint, e.g. ttarrivals',
-  station_id               STRING    COMMENT 'Requested CTA parent station id (mapid)',
-  requested_at_utc         TIMESTAMP COMMENT 'When the collector sent the request (UTC)',
-  received_at_utc          TIMESTAMP COMMENT 'When the collector received the response (UTC)',
-  collection_date          DATE      COMMENT 'UTC date of received_at_utc',
-  http_status              INT,
-  elapsed_ms               INT,
-  attempts                 INT       COMMENT 'HTTP attempts including retries',
-  is_sample                BOOLEAN   COMMENT 'TRUE for fixture data - must be excluded from analytics',
-  envelope_schema_version  INT,
-  collector_version        STRING,
-  cta_tmst_local           STRING    COMMENT 'CTA response timestamp, America/Chicago local, as received',
-  cta_error_code           STRING    COMMENT 'CTA errCd; 0 = success',
-  cta_error_name           STRING,
-  eta_count                INT       COMMENT 'Number of predictions in the response',
-  is_parse_error           BOOLEAN   NOT NULL COMMENT 'TRUE if the file is not a valid collector envelope',
-  raw_json                 STRING    NOT NULL COMMENT 'Complete file contents, unmodified',
-  source_file_path         STRING    NOT NULL,
-  source_file_size         BIGINT,
-  source_file_modified_at  TIMESTAMP,
-  ingested_at_utc          TIMESTAMP NOT NULL COMMENT 'When this row was written to Bronze',
-  ingestion_batch_id       BIGINT    COMMENT 'Auto Loader micro-batch id'
-)
-USING DELTA
-COMMENT 'Bronze: one row per raw CTA Train Tracker arrivals API response'
-TBLPROPERTIES (delta.enableChangeDataFeed = true)
-""")
+spark.sql(BRONZE_ARRIVALS.create_sql(BRONZE_TABLE))
 
 if reset_checkpoint:
     # Safe because MERGE on record_key prevents duplicates; this only forces every file to be re-read.
@@ -104,17 +113,19 @@ if reset_checkpoint:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 2. Read new files incrementally with Auto Loader
+# MAGIC ## 2. Read new files incrementally with Auto Loader, then MERGE
 # MAGIC
 # MAGIC `cloudFiles.format = text` with `wholetext = true` reads each file as **one row** holding its full,
-# MAGIC unparsed text. Bronze therefore can't fail on a schema change in the CTA response. Parsing into columns
-# MAGIC happens deliberately in Silver. The hidden `_metadata` column provides the source file path, size and
-# MAGIC modification time.
+# MAGIC unparsed text, so Bronze can't fail on a schema change in the CTA response. The hidden `_metadata`
+# MAGIC column provides the source file path, size and modification time.
+# MAGIC
+# MAGIC `trigger(availableNow=True)` processes everything new, then stops. Serverless compute doesn't run
+# MAGIC always-on streams, and this mode is ideal for a scheduled job.
 
 # COMMAND ----------
 
-from pyspark.sql import DataFrame, functions as F
 from delta.tables import DeltaTable
+from pyspark.sql import DataFrame, functions as F
 
 raw_stream = (
     spark.readStream.format("cloudFiles")
@@ -130,72 +141,13 @@ raw_stream = (
     )
 )
 
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 3. Extract envelope metadata and merge into Bronze
-# MAGIC
-# MAGIC Only the collector's `metadata` block and a few top-level response fields are extracted, for
-# MAGIC deduplication and monitoring. The predictions (`eta`) stay inside `raw_json` until Silver.
-# MAGIC
-# MAGIC `try_cast` and `from_json` return NULL instead of failing on bad input, so one corrupt file can't stop
-# MAGIC the pipeline. It is flagged instead.
-
-# COMMAND ----------
-
-ENVELOPE_SCHEMA = """
-  metadata STRUCT<
-    schema_version: INT, collection_id: STRING, source_system: STRING, source_endpoint: STRING,
-    station_id: STRING, requested_at_utc: STRING, received_at_utc: STRING, http_status: INT,
-    elapsed_ms: INT, attempts: INT, is_sample: BOOLEAN, collector_version: STRING
-  >,
-  response STRUCT<ctatt: STRUCT<tmst: STRING, errCd: STRING, errNm: STRING>>
-"""
-
-
-def to_bronze_rows(raw: DataFrame, batch_id: int) -> DataFrame:
-    env = F.from_json("raw_json", ENVELOPE_SCHEMA)
-    parsed = raw.withColumn("env", env)
-    m = "env.metadata"
-    received = F.expr(f"try_cast({m}.received_at_utc AS TIMESTAMP)")
-    is_parse_error = F.col(f"{m}.collection_id").isNull() | F.col("env.response.ctatt").isNull()
-    return parsed.select(
-        F.coalesce(F.col(f"{m}.collection_id"), F.sha2("raw_json", 256)).alias("record_key"),
-        F.col(f"{m}.collection_id").alias("collection_id"),
-        F.col(f"{m}.source_system").alias("source_system"),
-        F.col(f"{m}.source_endpoint").alias("source_endpoint"),
-        F.col(f"{m}.station_id").alias("station_id"),
-        F.expr(f"try_cast({m}.requested_at_utc AS TIMESTAMP)").alias("requested_at_utc"),
-        received.alias("received_at_utc"),
-        F.to_date(received).alias("collection_date"),
-        F.col(f"{m}.http_status").alias("http_status"),
-        F.col(f"{m}.elapsed_ms").alias("elapsed_ms"),
-        F.col(f"{m}.attempts").alias("attempts"),
-        F.col(f"{m}.is_sample").alias("is_sample"),
-        F.col(f"{m}.schema_version").alias("envelope_schema_version"),
-        F.col(f"{m}.collector_version").alias("collector_version"),
-        F.col("env.response.ctatt.tmst").alias("cta_tmst_local"),
-        F.col("env.response.ctatt.errCd").alias("cta_error_code"),
-        F.col("env.response.ctatt.errNm").alias("cta_error_name"),
-        F.coalesce(
-            F.expr("json_array_length(get_json_object(raw_json, '$.response.ctatt.eta'))"), F.lit(0)
-        ).cast("int").alias("eta_count"),
-        is_parse_error.alias("is_parse_error"),
-        "raw_json",
-        "source_file_path",
-        "source_file_size",
-        "source_file_modified_at",
-        F.current_timestamp().alias("ingested_at_utc"),
-        F.lit(batch_id).cast("bigint").alias("ingestion_batch_id"),
-    )
-
 
 def merge_into_bronze(batch: DataFrame, batch_id: int) -> None:
-    rows = to_bronze_rows(batch, batch_id).dropDuplicates(["record_key"])
+    rows = to_bronze_rows(batch, batch_id).dropDuplicates([BRONZE_ARRIVALS.key])
     (
         DeltaTable.forName(batch.sparkSession, BRONZE_TABLE)
         .alias("t")
-        .merge(rows.alias("s"), "t.record_key = s.record_key")
+        .merge(rows.alias("s"), f"t.{BRONZE_ARRIVALS.key} = s.{BRONZE_ARRIVALS.key}")
         .whenNotMatchedInsertAll()
         .execute()
     )
@@ -211,6 +163,7 @@ query = (
 )
 query.awaitTermination()
 
+
 def _input_rows(p) -> int:
     # Progress is a dict on older runtimes and a StreamingQueryProgress object on newer ones.
     value = p.get("numInputRows") if isinstance(p, dict) else getattr(p, "numInputRows", 0)
@@ -223,7 +176,7 @@ print(f"Files read this run: {files_read} (0 means no new files since the last r
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 4. Validate the Bronze table
+# MAGIC ## 3. Validate the Bronze table
 # MAGIC
 # MAGIC These checks make the job **fail loudly** when a guarantee is broken, instead of passing bad data
 # MAGIC downstream. Parse errors and CTA API errors are reported but don't fail the run, because Bronze is
@@ -258,7 +211,7 @@ if stats["sample_rows"]:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 5. Explore
+# MAGIC ## 4. Explore
 # MAGIC Observations per UTC day and station. The `eta_count` average shows how many predictions a typical
 # MAGIC response contains.
 

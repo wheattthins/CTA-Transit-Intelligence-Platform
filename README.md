@@ -5,7 +5,7 @@ arrival predictions, stores every observation, and (in later phases) processes t
 Databricks Bronze/Silver/Gold lakehouse to analyze prediction accuracy, headways and service
 reliability.
 
-> **Status:** Phase 1 (collector) done; **Phase 2 (Databricks Bronze layer)** built.
+> **Status:** Phase 1 (collector) done; Phase 2 (Bronze) and **Phase 3 (Silver)** built.
 > See [docs/architecture.md](docs/architecture.md) for the design and roadmap and
 > [docs/databricks_setup.md](docs/databricks_setup.md) for the Databricks walkthrough.
 
@@ -63,6 +63,7 @@ cp .env.example .env
 | `tzdata` | Time zone database so `America/Chicago` works on Windows |
 | `databricks-sdk` | Uploads raw files to a Unity Catalog volume (Phase 2) |
 | `pytest` (dev) | Unit tests |
+| `pyspark` (dev) | Runs the lakehouse transformations locally in tests (needs Java 17+) |
 
 ## Getting a CTA API key
 
@@ -157,6 +158,7 @@ are git-ignored.
 ## How to confirm the collector is working
 
 1. **Tests pass:** `python -m pytest`. All tests use mocked responses, with no network or key.
+   Spark tests need Java 17+ and `JAVA_HOME` (see *Running the Spark tests*); without it they're skipped.
 2. **Sample mode works:** `python -m backend.collectors.train_tracker --sample` prints a
    Belmont table marked `SAMPLE DATA` and writes one file under `data/sample_runs/`.
 3. **Live request works** (after adding your key):
@@ -178,8 +180,20 @@ python -m backend.uploaders.volume_uploader --dry-run
 python -m backend.uploaders.volume_uploader
 ```
 
-Then run `databricks/bronze_ingestion.py` in your workspace. Full steps, including account and token
+Then run `databricks/bronze_ingestion.py` and `databricks/silver_transformation.py` in your workspace. Full steps, including account and token
 setup, are in [docs/databricks_setup.md](docs/databricks_setup.md).
+
+## Running the Spark tests
+
+The lakehouse transformations (`databricks/cta_lakehouse`) are tested with a local Spark session.
+
+- **Windows:** install a JDK 17 (e.g. `winget install Microsoft.OpenJDK.17`), then
+  `$env:JAVA_HOME = "C:\Program Files\Microsoft\jdk-17..."` (match the installed folder).
+- **macOS:** `brew install openjdk@17`, then `export JAVA_HOME=/opt/homebrew/opt/openjdk@17`.
+
+```powershell
+python -m pytest databricks/tests -v
+```
 
 ## Project structure
 
@@ -198,6 +212,9 @@ data/
   samples/                      SAMPLE fixture (committed, clearly labeled)
 databricks/
   bronze_ingestion.py           Notebook: Auto Loader + MERGE into the Bronze Delta table
+  silver_transformation.py      Notebook: validate, type and deduplicate into Silver tables
+  cta_lakehouse/                Tested PySpark transformations + table definitions
+  tests/                        Local Spark tests (skipped if Java is unavailable)
 docs/
   architecture.md               Design decisions and roadmap
   databricks_setup.md           Phase 2 setup, verification and recovery

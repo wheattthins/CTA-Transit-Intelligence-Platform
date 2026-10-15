@@ -1,4 +1,4 @@
-# Phase 2: Databricks setup and Bronze ingestion
+# Databricks setup: Bronze and Silver
 
 This guide takes you from no Databricks account to a populated Bronze Delta table.
 Steps marked **(you)** need your browser or account. Everything else is a command.
@@ -78,8 +78,8 @@ from inside each file.
 3. Open `databricks/bronze_ingestion`. The `# Databricks notebook source` header makes the `.py`
    file open as a notebook. Use **Pull** on the Git folder to get later changes.
 
-**Option B: Import.** **Workspace** → your home folder → **⋮** → **Import** → upload
-`databricks/bronze_ingestion.py`.
+**Option B: Import.** Not recommended now. The notebooks import the `cta_lakehouse` package, so
+you would have to import the whole `databricks/` folder with the same layout. Use a Git folder.
 
 ## 6. Run the Bronze notebook (you)
 
@@ -114,6 +114,33 @@ SELECT received_at_utc, get_json_object(raw_json, '$.response.ctatt.eta[0].destN
 FROM workspace.cta_bronze.train_tracker_arrivals LIMIT 5;
 ```
 
+## 7. Run the Silver notebook (you)
+
+1. **Pull** the latest code into the Git folder.
+2. Open `databricks/silver_transformation` on Serverless compute and choose **Run all** (widgets: `workspace`,
+   `cta_bronze`, `cta_silver`, full refresh `false`).
+
+Expected results:
+- Three tables in `workspace.cta_silver`: `train_tracker_observations`, `train_arrival_predictions`,
+  `train_tracker_rejects`.
+- `All hard data-quality checks passed`. If a check fails, the notebook stops with the reasons.
+- On real data, the reject rate should be at or near 0%. The first live sample had 0 rejects in 64 predictions.
+
+**Prove incrementality:** run it again and it prints `Bronze rows processed this run: 0`. Collect, upload
+and run Bronze, then Silver, and only the new rows are processed.
+
+**After changing validation logic:** set `full_refresh = true`, run, then set it back to `false`.
+
+```sql
+-- Valid predictions in Chicago time
+SELECT route_name, run_number, stop_description, predicted_arrival_chicago, minutes_until_arrival, quality_warnings
+FROM workspace.cta_silver.train_arrival_predictions ORDER BY observed_at_utc DESC LIMIT 20;
+
+-- What gets rejected and why
+SELECT reason, count(*) FROM workspace.cta_silver.train_tracker_rejects
+LATERAL VIEW explode(rejection_reasons) AS reason GROUP BY reason;
+```
+
 ## Recovery
 
 | Problem | Fix |
@@ -123,6 +150,9 @@ FROM workspace.cta_bronze.train_tracker_arrivals LIMIT 5;
 | Need to reprocess everything | Run with `reset = true`. There are no duplicates thanks to the MERGE. |
 | Need to rebuild Bronze from scratch | `DROP TABLE workspace.cta_bronze.train_tracker_arrivals;` then run with `reset = true`. The raw files in the volume are the source of truth. |
 | `cloudFiles` / checkpoint errors after changing the read options | Run with `reset = true`. |
+| Silver failed mid-run | Re-run. MERGE skips rows already written. |
+| Silver logic changed | Run Silver with `full_refresh = true`. It is rebuilt from Bronze. |
+| `cta_lakehouse not found` | Run the notebooks from the Git folder (Option A), not a standalone import. |
 | Daily quota exceeded | Compute stops for the day. Data is safe. Re-run tomorrow. |
 
 ## Troubleshooting

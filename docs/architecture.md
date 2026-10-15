@@ -94,18 +94,81 @@ marked `is_sample` are refused.
 partitioning would create many tiny files. Delta's data skipping is enough. Liquid clustering on
 `collection_date` can be added later without rewriting code.
 
-**Why a notebook with no shared Python module?** On serverless compute, a notebook's working
-directory isn't guaranteed, so imports from the repo are fragile. Keeping Bronze self-contained
-avoids that. The notebook ends with assertions that fail the run if duplicates exist.
+**Code layout:** transformations live in the `databricks/cta_lakehouse/` package (pure PySpark,
+no Databricks-only APIs) and are unit-tested locally. Notebooks only do I/O: Auto Loader, MERGE,
+validation. Notebooks find the package next to themselves in the Git folder and register it with
+cloudpickle, because serverless runs `foreachBatch` functions in a separate Python process that
+needs the module's code.
 
-**Testing gap:** the uploader is unit-tested locally. The Spark code needs a Databricks runtime
-(Auto Loader and serverless are Databricks-only) and is verified by running the notebook, whose
-validation cell checks its guarantees.
+**Testing gap:** Auto Loader, Unity Catalog volumes and MERGE are Databricks-only, so they are
+verified by running the notebooks, whose validation cells check the guarantees.
+
+## Phase 3 decisions: Silver
+
+Three tables in `workspace.cta_silver`, all defined in `cta_lakehouse/tables.py`. A test asserts
+that the transformation output matches each definition column for column.
+
+| Table | Grain | Key |
+|---|---|---|
+| `train_tracker_observations` | one row per API call (success or CTA error) | `collection_id` |
+| `train_arrival_predictions` | one row per valid `eta` element per call | `prediction_key` = sha256(collection_id:eta_index) |
+| `train_tracker_rejects` | one row per rejected file or `eta` element | `reject_key` |
+
+**Why a separate observations table?** Gold must tell "no trains" apart from "no data". Every poll,
+including CTA error responses and polls returning zero predictions, is recorded with its time, so
+coverage and gaps can be measured rather than guessed.
+
+**Validation.** Each record gets a `rejection_reasons` array (hard failures, so the record goes to rejects)
+and a `quality_warnings` array (soft issues, so the record is kept). All reasons are reported, not just the
+first, which makes the rejects table useful for debugging.
+
+| Hard rejection | Rule |
+|---|---|
+| `missing_<field>` | `staId`, `stpId`, `rn`, `rt`, `prdt`, `arrT` must be non-blank |
+| `invalid_prdt` / `invalid_arrT` | Must parse as `yyyy-MM-ddTHH:mm:ss` |
+| `unknown_route` | `rt` must be one of the 8 CTA route codes |
+| `invalid_station_id` / `invalid_stop_id` | `4xxxx` / `3xxxx` |
+| `station_mismatch` | `staId` must equal the requested station |
+| `arrival_before_prediction` | `arrT` < `prdt` |
+| `prediction_horizon_too_long` | `arrT - prdt` > 180 min |
+| `invalid_isApp/isSch/isDly/isFlt` | Must be `0` or `1` |
+| `duplicate_in_response` | Same stop + run + `arrT` twice in one response (first kept) |
+| `unparseable_envelope`, `sample_data` | Whole-file rejects |
+
+| Soft warning | Effect |
+|---|---|
+| `missing_coordinates_for_live_train` | Recorded only (scheduled trains legitimately lack coordinates) |
+| `coordinates_out_of_range` | Coordinates outside the Chicago area are nulled |
+| `invalid_heading` | Heading outside 0-359 is nulled |
+| `stale_prediction` | Prediction generated more than 5 min before we observed it |
+
+**Duplicates have three meanings.** (1) Same observation twice: prevented by Bronze's MERGE.
+(2) Same prediction twice in one response: rejected. (3) Same CTA prediction seen in consecutive
+polls: **kept**, because each sighting is a real observation, and linked by `prediction_fingerprint`
+(sha256 of stop, run, `prdt`, `arrT`). The first real data showed 2 of 64 rows repeated across polls 33
+seconds apart, consistent with CTA caching responses.
+
+**Run numbers are not unique per visit.** Brown and Purple Line trains pass Belmont twice (to and
+from the Loop) under the same run number, at different stops. Validation treats them as distinct, and
+Gold must group by `(run_number, stop_id)` *and* a time window.
+
+**Time.** All instants are stored as UTC `TIMESTAMP`. Chicago wall-clock copies
+(`predicted_arrival_chicago`, `observed_at_chicago`) are `TIMESTAMP_NTZ`, so rush-hour logic doesn't
+depend on session settings. During the November fall-back hour, Spark resolves ambiguous local
+times to the earlier (CDT) instant. This is tested and documented, not hidden.
+
+**Incremental and idempotent.** Silver streams from the Bronze Delta table (`availableNow`, with a
+checkpoint) and MERGEs on each table's key. A `full_refresh` widget drops and rebuilds Silver from
+Bronze after logic changes. Bronze is the replayable source of truth.
+
+**Hard checks that fail the notebook:** key uniqueness in every table; Bronze rows = observations +
+response-level rejects; per observation, valid + rejected = `eta_count`; prediction rows = sum of
+`valid_prediction_count`.
 
 ## Roadmap
 1. **Collector** (done)
 2. **Bronze** (built): Auto Loader + MERGE of raw envelopes into a Delta table, deduplicated on `collection_id`
-3. **Silver**: explode `eta`, typed columns, UTC timestamps, Chicago service date, rejected-record table
+3. **Silver** (built): observations, typed predictions, rejects with reasons, quality warnings
 4. **Gold**: prediction revisions, *inferred* arrivals with confidence and coverage, headways, rush-hour comparisons
 5. **Automation**: scheduled collection, Lakeflow Jobs, freshness and failure tracking
 6. **Dashboard**: React + TypeScript + Recharts + MapLibre on static Gold exports

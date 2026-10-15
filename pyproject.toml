@@ -1,9 +1,11 @@
 [project]
 name = "cta-transit-intelligence"
 version = "0.1.0"
-description = "Collects CTA Train Tracker predictions for a Databricks lakehouse."
+description = "Collects CTA Train Tracker predictions and processes them in a Databricks lakehouse."
 requires-python = ">=3.11"
 
 [tool.pytest.ini_options]
-testpaths = ["backend/tests"]
+testpaths = ["backend/tests", "databricks/tests"]
+# "databricks" lets tests import the cta_lakehouse package the same way the notebooks do.
+pythonpath = [".", "databricks"]
 addopts = "-ra"

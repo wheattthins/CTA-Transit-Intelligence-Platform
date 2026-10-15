@@ -1,0 +1,5 @@
+# Runtime dependencies for the CTA collector (Phase 1).
+requests>=2.32,<3       # HTTP client for the CTA Train Tracker API
+python-dotenv>=1.0,<2   # Loads CTA_API_KEY and settings from a local .env file
+tenacity>=9.0,<10       # Retry with exponential backoff for transient failures
+tzdata>=2024.1          # IANA time zone database (Windows has none built in; zoneinfo needs it)

@@ -1,0 +1,8 @@
+{"ctatt": {"tmst": "2026-10-15T08:00:12", "errCd": "0", "errNm": null, "eta": [
+  {"staId": "41320", "stpId": "30256", "staNm": "Belmont", "stpDe": "Service toward 95th/Dan Ryan",
+   "rn": "822", "rt": "Red", "destNm": "95th/Dan Ryan", "trDr": "5",
+   "prdt": "2026-10-15T08:00:05", "arrT": "2026-10-15T08:01:05",
+   "isApp": "1", "isSch": "0", "isDly": "0", "isFlt": "0", "lat": "41.94612", "lon": "-87.65371", "heading": "178"},
+  {"staId": "41320", "stpId": "30255", "rn": "917", "rt": "Red", "prdt": "not-a-time", "arrT": "2026-10-15T08:04:07"},
+  {"staId": "41320", "stpId": "30255", "rt": "Red", "prdt": "2026-10-15T08:00:07", "arrT": "2026-10-15T08:04:07"}
+]}}

@@ -1,0 +1,30 @@
+# --- Secrets ---------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# --- Collected data --------------------------------------------------------
+# Raw API observations can grow quickly and belong in the lakehouse, not Git.
+data/raw/*
+!data/raw/.gitkeep
+data/sample_runs/*
+!data/sample_runs/.gitkeep
+
+# --- Editors / OS ----------------------------------------------------------
+.vscode/
+.idea/
+.cursor/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,9 @@
+[project]
+name = "cta-transit-intelligence"
+version = "0.1.0"
+description = "Collects CTA Train Tracker predictions for a Databricks lakehouse."
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+addopts = "-ra"

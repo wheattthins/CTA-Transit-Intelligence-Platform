@@ -32,6 +32,9 @@ def spark():
             .getOrCreate()
         )
     except Exception as exc:  # most often: no Java runtime / JAVA_HOME not set
+        # CI sets REQUIRE_SPARK=1 so a broken Spark setup fails loudly instead of skipping.
+        if os.environ.get("REQUIRE_SPARK") == "1":
+            raise
         pytest.skip(f"Local Spark unavailable ({type(exc).__name__}); install Java 17+ and set JAVA_HOME")
     session.sparkContext.setLogLevel("ERROR")
     yield session

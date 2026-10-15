@@ -43,7 +43,8 @@ jobs:
           path: frontend/dist
 
   deploy:
-    if: github.event_name != 'pull_request'
+    # Pages can't serve a private repo on the free plan; deploys start once the repo is public.
+    if: github.event_name != 'pull_request' && !github.event.repository.private
     needs: build
     runs-on: ubuntu-latest
     permissions:

@@ -1,5 +1,5 @@
 # Development and test dependencies.
 -r requirements.txt
 pytest>=8.0,<9
-# Local Spark for testing databricks/cta_lakehouse (also needs Java 17+, see README).
+# Local Spark for testing databricks/cta_lakehouse (also needs Java 17+, see docs/setup.md).
 pyspark>=4.0,<5

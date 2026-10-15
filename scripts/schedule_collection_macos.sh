@@ -17,7 +17,7 @@ DOMAIN="gui/$(id -u)"
 
 case "${1:-}" in
   install)
-    [[ -x "$PYTHON" ]] || { echo "Virtual environment not found at $PYTHON - complete the README setup first."; exit 1; }
+    [[ -x "$PYTHON" ]] || { echo "Virtual environment not found at $PYTHON - complete the setup in docs/setup.md first."; exit 1; }
     [[ -f "$REPO/.env" ]] || { echo ".env not found in $REPO - add your CTA_API_KEY first."; exit 1; }
     mkdir -p "$HOME/Library/LaunchAgents" "$REPO/data/logs"
     cat > "$PLIST" <<PLIST

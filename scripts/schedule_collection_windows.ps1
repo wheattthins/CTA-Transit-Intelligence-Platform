@@ -28,7 +28,7 @@ if ($Unregister) {
 
 $repo = Split-Path -Parent $PSScriptRoot
 $python = Join-Path $repo ".venv\Scripts\python.exe"
-if (-not (Test-Path $python)) { throw "Virtual environment not found at $python - complete the README setup first." }
+if (-not (Test-Path $python)) { throw "Virtual environment not found at $python - complete the setup in docs/setup.md first." }
 if (-not (Test-Path (Join-Path $repo ".env"))) { throw ".env not found in $repo - add your CTA_API_KEY first." }
 
 $action = New-ScheduledTaskAction -Execute $python `

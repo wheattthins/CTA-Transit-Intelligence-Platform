@@ -133,6 +133,9 @@ for key, spec in SILVER_TABLES.items():
 from delta.tables import DeltaTable
 from pyspark.sql import DataFrame, functions as F
 
+# Counted from the tables afterwards; streaming progress isn't reliable on serverless (see Bronze).
+RUN_STARTED_AT = spark.sql("SELECT date_format(current_timestamp(), \"yyyy-MM-dd'T'HH:mm:ss.SSSSSS\")").first()[0]
+
 
 def _merge_new(df: DataFrame, full_name: str, key: str) -> None:
     (
@@ -163,12 +166,12 @@ query = (
 query.awaitTermination()
 
 
-def _input_rows(p) -> int:
-    value = p.get("numInputRows") if isinstance(p, dict) else getattr(p, "numInputRows", 0)
-    return int(value or 0)
-
-
-rows_processed = sum(_input_rows(p) for p in query.recentProgress or [])
+_since = F.to_timestamp(F.lit(RUN_STARTED_AT))
+# Every Bronze row becomes exactly one observation or one response-level reject.
+rows_processed = (
+    spark.table(FULL_NAMES["observations"]).where(F.col("silver_processed_at_utc") >= _since).count()
+    + spark.table(FULL_NAMES["rejects"]).where((F.col("reject_level") == "response") & (F.col("rejected_at_utc") >= _since)).count()
+)
 print(f"Bronze rows processed this run: {rows_processed}")
 
 def _publish_task_value(key: str, value) -> None:

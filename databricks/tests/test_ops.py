@@ -165,3 +165,30 @@ def test_pipeline_runs_row_matches_table(spark, pipeline_tables):
     assert [(f.name, f.dataType.simpleString()) for f in row.schema] == [
         (f.name, f.dataType.simpleString()) for f in expected
     ]
+
+
+def test_reads_real_collector_summary_files_from_disk(spark, tmp_path):
+    """Regression: files are pretty-printed JSON written by the collector itself. A line-by-line
+    read (the .option('wholetext') trap) turned each file into unparseable fragments."""
+    import sys
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from backend.jobs.scheduled_collection import RunSummary, summary_path
+    from backend.storage.raw_store import write_json_exclusive
+
+    from cta_lakehouse.ops import read_collector_run_files
+
+    for i, day in enumerate((14, 15)):
+        s = RunSummary(run_id=f"run-{i}-0000", started_at_utc=datetime(2026, 10, day, 12, tzinfo=timezone.utc),
+                       station_ids=("41320",), interval_seconds=60, planned_cycles=60,
+                       finished_at_utc=datetime(2026, 10, day, 12, 59, tzinfo=timezone.utc), exit_code=0)
+        write_json_exclusive(summary_path(tmp_path, s), s.to_dict())
+    (tmp_path / "collector_runs" / "notes.txt").write_text("ignore me")
+
+    raw = read_collector_run_files(spark, str(tmp_path / "collector_runs"))
+    assert raw.count() == 2  # one row per file, not per line
+    runs = collector_runs_from_text(raw).orderBy("run_id").collect()
+    assert [r.run_id for r in runs] == ["run-0-0000", "run-1-0000"]
+    assert runs[0].planned_cycles == 60 and runs[0].failures == []

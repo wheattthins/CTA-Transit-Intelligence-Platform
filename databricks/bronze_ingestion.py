@@ -127,6 +127,11 @@ if reset_checkpoint:
 from delta.tables import DeltaTable
 from pyspark.sql import DataFrame, functions as F
 
+# Rows written by this run are counted from the table afterwards (ingested_at_utc >= run start).
+# Streaming progress (query.recentProgress) is not reliably populated on serverless once the
+# query has finished, so it isn't used for metrics.
+RUN_STARTED_AT = spark.sql("SELECT date_format(current_timestamp(), \"yyyy-MM-dd'T'HH:mm:ss.SSSSSS\")").first()[0]
+
 raw_stream = (
     spark.readStream.format("cloudFiles")
     .option("cloudFiles.format", "text")
@@ -164,14 +169,10 @@ query = (
 query.awaitTermination()
 
 
-def _input_rows(p) -> int:
-    # Progress is a dict on older runtimes and a StreamingQueryProgress object on newer ones.
-    value = p.get("numInputRows") if isinstance(p, dict) else getattr(p, "numInputRows", 0)
-    return int(value or 0)
-
-
-files_read = sum(_input_rows(p) for p in query.recentProgress or [])
-print(f"Files read this run: {files_read} (0 means no new files since the last run)")
+files_read = (
+    spark.table(BRONZE_TABLE).where(F.col("ingested_at_utc") >= F.to_timestamp(F.lit(RUN_STARTED_AT))).count()
+)
+print(f"New files ingested this run: {files_read} (0 means no new files since the last run)")
 
 def _publish_task_value(key: str, value) -> None:
     """Report a result to later tasks in the job (pipeline_health). A no-op outside a job."""

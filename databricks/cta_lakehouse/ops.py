@@ -30,6 +30,18 @@ def _ts(col: Column) -> Column:
     return F.call_function("try_to_timestamp", col)
 
 
+def read_collector_run_files(spark, path: str) -> DataFrame:
+    """Read every collector run summary under ``path``, one row per file.
+
+    NOTE: pass ``wholetext`` as an argument to ``.text()``. ``.option("wholetext", "true").text(p)``
+    is silently overridden by ``.text()``'s own ``wholetext=False`` default, which would split
+    pretty-printed JSON into unparseable lines.
+    """
+    return spark.read.text(
+        path, wholetext=True, recursiveFileLookup=True, pathGlobFilter="collector_run_*.json"
+    ).select(F.col("value").alias("raw_json"), F.col("_metadata.file_path").alias("source_file_path"))
+
+
 def collector_runs_from_text(raw: DataFrame) -> DataFrame:
     """Parse collector run summary files (columns: raw_json, source_file_path) into typed rows."""
     r = raw.withColumn("r", F.from_json("raw_json", COLLECTOR_RUN_JSON_SCHEMA))

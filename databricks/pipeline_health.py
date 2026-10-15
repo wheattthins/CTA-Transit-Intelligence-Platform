@@ -48,6 +48,7 @@ from cta_lakehouse.ops import (
     collector_runs_from_text,
     compute_health_metrics,
     evaluate_health,
+    read_collector_run_files,
 )
 from cta_lakehouse.tables import (
     BRONZE_ARRIVALS,
@@ -107,12 +108,7 @@ from pyspark.sql import functions as F
 from pyspark.errors import AnalysisException
 
 try:
-    raw_runs = (
-        spark.read.option("wholetext", "true").option("recursiveFileLookup", "true")
-        .option("pathGlobFilter", "collector_run_*.json").text(COLLECTOR_RUNS_PATH)
-        .select(F.col("value").alias("raw_json"), F.col("_metadata.file_path").alias("source_file_path"))
-    )
-    collector_runs = collector_runs_from_text(raw_runs)
+    collector_runs = collector_runs_from_text(read_collector_run_files(spark, COLLECTOR_RUNS_PATH))
     collector_runs.select(*OPS_COLLECTOR_RUNS.column_names).write.mode("overwrite").saveAsTable(T["collector_runs"])
     print(f"collector_runs: {spark.table(T['collector_runs']).count()} run(s)")
 except AnalysisException as exc:

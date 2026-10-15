@@ -168,7 +168,16 @@ def _input_rows(p) -> int:
     return int(value or 0)
 
 
-print(f"Bronze rows processed this run: {sum(_input_rows(p) for p in query.recentProgress or [])}")
+rows_processed = sum(_input_rows(p) for p in query.recentProgress or [])
+print(f"Bronze rows processed this run: {rows_processed}")
+
+def _publish_task_value(key: str, value) -> None:
+    """Report a result to later tasks in the job (pipeline_health). A no-op outside a job."""
+    try:
+        dbutils.jobs.taskValues.set(key=key, value=value)
+    except Exception:
+        pass
+
 
 # COMMAND ----------
 
@@ -229,6 +238,7 @@ if reject_rate > 0.05:
 if failures:
     raise AssertionError("Silver data quality checks failed:\n- " + "\n- ".join(failures))
 print("All hard data-quality checks passed")
+_publish_task_value("rows_processed", rows_processed)
 
 # COMMAND ----------
 

@@ -166,6 +166,11 @@ if failures:
     raise AssertionError("Gold checks failed:\n- " + "\n- ".join(failures))
 print("All hard Gold checks passed")
 
+try:  # report to pipeline_health; a no-op outside a job
+    dbutils.jobs.taskValues.set(key="train_visits", value=visits.count())
+except Exception:
+    pass
+
 display(
     visits.groupBy("outcome", "inference_confidence")
     .agg(F.count("*").alias("visits"), F.round(F.avg("arrival_uncertainty_seconds"), 1).alias("avg_uncertainty_s"))

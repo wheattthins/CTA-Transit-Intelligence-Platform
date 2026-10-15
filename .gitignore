@@ -28,3 +28,7 @@ data/sample_runs/*
 .cursor/
 .DS_Store
 Thumbs.db
+
+# Scheduled collector logs and lock
+data/logs/
+data/.collector.lock

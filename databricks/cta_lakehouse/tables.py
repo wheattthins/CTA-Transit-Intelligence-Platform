@@ -42,7 +42,7 @@ class TableSpec:
         props = ", ".join(f"'{k}' = '{v}'" for k, v in self.properties)
         return (
             f"CREATE TABLE IF NOT EXISTS {full_name} (\n  {cols}\n)\nUSING DELTA\n"
-            f"COMMENT '{esc(self.comment)}'\nTBLPROPERTIES ({props})"
+            f"COMMENT '{esc(self.comment)}'" + (f"\nTBLPROPERTIES ({props})" if props else "")
         )
 
     def ddl_schema(self) -> str:
@@ -338,3 +338,70 @@ GOLD_TABLES = {
     "rush_hour_comparison": GOLD_RUSH_HOUR_COMPARISON,
     "collection_coverage": GOLD_COLLECTION_COVERAGE,
 }
+
+
+# --------------------------------------------------------------------------- Ops (monitoring)
+
+OPS_COLLECTOR_RUNS = TableSpec(
+    name="collector_runs",
+    comment="Ops: one row per scheduled collector run (from uploaded run summaries), including failed requests",
+    key="run_id",
+    properties=(),
+    columns=(
+        Column("run_id", "STRING", nullable=False),
+        Column("started_at_utc", "TIMESTAMP"),
+        Column("finished_at_utc", "TIMESTAMP"),
+        Column("station_ids", "ARRAY<STRING>"),
+        Column("interval_seconds", "INT"),
+        Column("planned_cycles", "INT"),
+        Column("requests", "INT", "API requests attempted"),
+        Column("succeeded", "INT"),
+        Column("failed", "INT", "Requests that produced no usable response, or a CTA error"),
+        Column("files_written", "INT"),
+        Column("files_uploaded", "INT"),
+        Column("upload_failures", "INT"),
+        Column("uploads_disabled_reason", "STRING"),
+        Column("interrupted", "BOOLEAN"),
+        Column("exit_code", "INT"),
+        Column("collector_version", "STRING"),
+        Column(
+            "failures",
+            "ARRAY<STRUCT<station_id: STRING, attempted_at_utc: TIMESTAMP, error_type: STRING, error_code: STRING, message: STRING>>",
+            "Each failed request with its reason (API key redacted)",
+        ),
+        Column("source_file_path", "STRING"),
+    ),
+)
+
+OPS_PIPELINE_RUNS = TableSpec(
+    name="pipeline_runs",
+    comment="Ops: one row per pipeline job run - task results, freshness, coverage, quality and health status",
+    key="checked_at_utc",
+    properties=(),
+    columns=(
+        Column("checked_at_utc", "TIMESTAMP", nullable=False),
+        Column("job_run_id", "STRING", "Lakeflow job run id, or 'manual'"),
+        Column("status", "STRING", "healthy | degraded | stale | failed"),
+        Column("issues", "ARRAY<STRING>"),
+        Column("bronze_files_read", "BIGINT", "Files ingested by this run (NULL = task failed/did not run)"),
+        Column("silver_rows_processed", "BIGINT"),
+        Column("gold_train_visits", "BIGINT"),
+        Column("latest_observation_utc", "TIMESTAMP"),
+        Column("staleness_minutes", "DOUBLE", "Minutes since the newest observation"),
+        Column("polls_24h", "BIGINT"),
+        Column("successful_polls_24h", "BIGINT"),
+        Column("api_success_rate_24h", "DOUBLE"),
+        Column("predictions_24h", "BIGINT"),
+        Column("rejected_predictions_24h", "BIGINT"),
+        Column("reject_rate_24h", "DOUBLE"),
+        Column("coverage_pct_24h", "DOUBLE", "Share of station-minutes in the last 24h with a successful poll"),
+        Column("bronze_backlog", "BIGINT", "Bronze rows not yet in Silver (should be 0 after each run)"),
+        Column("gold_train_visits_total", "BIGINT"),
+        Column("gold_latest_inferred_arrival_utc", "TIMESTAMP"),
+        Column("collector_runs_24h", "BIGINT"),
+        Column("collector_requests_24h", "BIGINT"),
+        Column("collector_failed_requests_24h", "BIGINT"),
+        Column("collector_upload_failures_24h", "BIGINT"),
+        Column("last_collector_run_finished_utc", "TIMESTAMP"),
+    ),
+)

@@ -253,12 +253,45 @@ small (serverless can't cache). At larger scale, recompute only recent service d
 - Small samples: rolled-up rows show `predictions` and `train_visits` counts. Read them before
   trusting a percentage.
 
+## Phase 5 decisions: automation and reliability
+
+**Two schedulers, joined by the landing volume.** Collection must run outside Databricks (Free
+Edition restricts outbound internet), so a local scheduler (Task Scheduler or launchd) runs
+`scheduled_collection` hourly, and a Lakeflow Job processes whatever has landed every 2 hours.
+Neither depends on the other being up. Files simply wait.
+
+**Collector reliability.** Hour-long bounded sessions (not a forever-loop) mean a crash costs at
+most one hour, and memory or connection state resets regularly. A lock file prevents overlap,
+judged stale by age only (probing a PID with `os.kill` *terminates* processes on Windows). Uploads
+run in the idle time between polls through an `after_cycle` hook, so the polling cadence doesn't
+drift, and an upload failure can never stop collection.
+
+**Failures that leave no data.** A failed request produces no observation file, so it would be
+invisible downstream. Each run therefore writes a *collector run summary*, with every failed
+request, its error type and its redacted message, which is uploaded and loaded into
+`cta_ops.collector_runs`.
+
+**Jobs as code.** `job_spec.py` builds the Jobs API settings (unit-tested). `deploy_job.py` syncs the
+committed notebooks and package to a dedicated workspace folder and creates or resets the job. This is
+the same idea as Databricks Asset Bundles, without adding the CLI as a dependency. The job is tagged
+with the git commit it runs, and the deploy refuses uncommitted changes.
+
+**Retries are safe because every layer is idempotent.** This is what makes `max_retries`, *Repair
+run* and "just re-run it" correct: exclusive-create files → skip-existing upload → Auto Loader
+checkpoint + MERGE (Bronze) → stream checkpoint + MERGE (Silver) → atomic full overwrite (Gold).
+
+**Health as data.** `pipeline_health` runs even after failures (`run_if: ALL_DONE`) and appends one
+row per job run to `cta_ops.pipeline_runs`: task results (via task values), freshness, 24-hour volume,
+API success, reject rate, coverage, Silver backlog and collector failures. Status rules live in a
+pure function (`evaluate_health`) with unit tests. Staleness doesn't fail the job by default,
+because a laptop collector legitimately stops overnight. Set `fail_on_stale` for an always-on collector.
+
 ## Roadmap
 1. **Collector** (done)
 2. **Bronze** (built): Auto Loader + MERGE of raw envelopes into a Delta table, deduplicated on `collection_id`
 3. **Silver** (built): observations, typed predictions, rejects with reasons, quality warnings
 4. **Gold** (built): inferred arrivals with confidence, prediction revisions and accuracy, headways, bunching and gaps, rush-hour comparison, coverage
-5. **Automation**: scheduled collection, Lakeflow Jobs, freshness and failure tracking
+5. **Automation** (built): scheduled collection, Lakeflow Job as code, health and failure tracking, runbook
 6. **Dashboard**: React + TypeScript + Recharts + MapLibre on static Gold exports
 
 ## Known limitations

@@ -173,6 +173,14 @@ def _input_rows(p) -> int:
 files_read = sum(_input_rows(p) for p in query.recentProgress or [])
 print(f"Files read this run: {files_read} (0 means no new files since the last run)")
 
+def _publish_task_value(key: str, value) -> None:
+    """Report a result to later tasks in the job (pipeline_health). A no-op outside a job."""
+    try:
+        dbutils.jobs.taskValues.set(key=key, value=value)
+    except Exception:
+        pass
+
+
 # COMMAND ----------
 
 # MAGIC %md
@@ -207,6 +215,8 @@ if stats["parse_errors"]:
     print(f"WARNING: {stats['parse_errors']} file(s) could not be parsed - see is_parse_error = true")
 if stats["sample_rows"]:
     print(f"WARNING: {stats['sample_rows']} SAMPLE row(s) present - Silver must exclude is_sample = true")
+
+_publish_task_value("files_read", files_read)  # only reached if every check above passed
 
 # COMMAND ----------
 

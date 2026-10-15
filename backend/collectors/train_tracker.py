@@ -21,7 +21,7 @@ import math
 import sys
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol
@@ -102,6 +102,8 @@ class CollectionOutcome:
     saved_path: Path | None = None
     error: str | None = None
     error_code: str | None = None
+    error_type: str | None = None  # exception class, e.g. CTATransientError
+    attempted_at_utc: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 def _metadata_for(response: ArrivalsResponse, *, is_sample: bool) -> ObservationMetadata:
@@ -139,10 +141,12 @@ def collect_station(
         if save and exc.response is not None:
             saved = save_observation(output_dir, _metadata_for(exc.response, is_sample=is_sample), exc.response.payload)
         logger.error("Station %s: %s", station_id, exc)
-        return CollectionOutcome(station_id, False, saved_path=saved, error=str(exc), error_code=exc.code)
+        return CollectionOutcome(
+            station_id, False, saved_path=saved, error=str(exc), error_code=exc.code, error_type=type(exc).__name__
+        )
     except CTAClientError as exc:
         logger.error("Station %s: collection failed: %s", station_id, exc)
-        return CollectionOutcome(station_id, False, error=str(exc))
+        return CollectionOutcome(station_id, False, error=str(exc), error_type=type(exc).__name__)
 
     saved_path = None
     if save:
@@ -182,8 +186,14 @@ def run_session(
     display: Callable[[str, list[ArrivalPrediction], bool], None] | None = None,
     sleep: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
+    after_cycle: Callable[[int], None] | None = None,
 ) -> list[CollectionOutcome]:
-    """Run ``iterations`` polling cycles on a fixed cadence of ``interval_seconds``."""
+    """Run ``iterations`` polling cycles on a fixed cadence of ``interval_seconds``.
+
+    ``after_cycle(cycle_index)`` runs after each cycle, inside the interval, before sleeping. The
+    scheduled job uses it to upload files between polls. Its time counts against the interval, so
+    the polling cadence doesn't drift.
+    """
     outcomes: list[CollectionOutcome] = []
     for i in range(iterations):
         cycle_start = monotonic()
@@ -199,6 +209,11 @@ def run_session(
             if outcome.error_code in FATAL_CTA_ERROR_CODES:
                 logger.critical("Stopping session: CTA error %s cannot be fixed by retrying.", outcome.error_code)
                 return outcomes
+        if after_cycle is not None:
+            try:
+                after_cycle(i)
+            except Exception:  # a hook failure (e.g. upload) must never stop collection
+                logger.exception("after_cycle hook failed; continuing collection")
         if i < iterations - 1:
             remaining = interval_seconds - (monotonic() - cycle_start)
             if remaining > 0:

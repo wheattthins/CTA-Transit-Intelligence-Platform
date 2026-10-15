@@ -97,15 +97,20 @@ def build_observation_path(root: Path, metadata: ObservationMetadata) -> Path:
 def save_observation(root: Path, metadata: ObservationMetadata, response: dict[str, Any]) -> Path:
     """Write the envelope atomically. Raises FileExistsError rather than overwrite."""
     path = build_observation_path(root, metadata)
+    write_json_exclusive(path, {"metadata": metadata.to_dict(), "response": response})
+    return path
+
+
+def write_json_exclusive(path: Path, payload: dict[str, Any]) -> None:
+    """Atomically create ``path`` with ``payload`` as JSON. Never replaces an existing file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
-        raise FileExistsError(f"Refusing to overwrite existing observation: {path}")
+        raise FileExistsError(f"Refusing to overwrite existing file: {path}")
 
-    envelope = {"metadata": metadata.to_dict(), "response": response}
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=".tmp_", suffix=".json")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(envelope, fh, ensure_ascii=False, indent=2)
+            json.dump(payload, fh, ensure_ascii=False, indent=2)
             fh.flush()
             os.fsync(fh.fileno())
         # os.link fails if the target exists, giving us a race-free "create only" rename.
@@ -123,4 +128,3 @@ def save_observation(root: Path, metadata: ObservationMetadata, response: dict[s
             os.unlink(tmp_name)
         except FileNotFoundError:
             pass
-    return path

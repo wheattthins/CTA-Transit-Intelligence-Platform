@@ -5,7 +5,8 @@ arrival predictions, stores every observation, and (in later phases) processes t
 Databricks Bronze/Silver/Gold lakehouse to analyze prediction accuracy, headways and service
 reliability.
 
-> **Status:** Phases 1–3 done; **Phase 4 (Gold: inferred arrivals, accuracy, headways)** built.
+> **Status:** Phases 1–4 done; **Phase 5 (automation and reliability)** built. See
+> [docs/operations.md](docs/operations.md) for scheduling, monitoring and recovery.
 > See [docs/architecture.md](docs/architecture.md) for the design and roadmap and
 > [docs/databricks_setup.md](docs/databricks_setup.md) for the Databricks walkthrough.
 
@@ -173,6 +174,20 @@ are git-ignored.
 5. **Error handling:** `CTA_API_KEY` set to a wrong value should log
    `CTA API error 101: Invalid API key`, stop without retrying, and exit with code `1`.
 
+## Running unattended (Phase 5)
+
+```powershell
+# Your machine: hourly collection with uploads every 15 minutes
+.\scripts\schedule_collection_windows.ps1        # Windows Task Scheduler
+scripts/schedule_collection_macos.sh install     # macOS launchd
+
+# Databricks: deploy the Bronze -> Silver -> Gold -> health job (every 2 hours)
+python databricks/deploy_job.py --run-now
+```
+
+Health, freshness and failures are recorded in `workspace.cta_ops.pipeline_runs` and
+`workspace.cta_ops.collector_runs`. The runbook is in [docs/operations.md](docs/operations.md).
+
 ## Loading data into Databricks (Phase 2)
 
 ```powershell
@@ -210,6 +225,8 @@ backend/
   services/arrival_parser.py    Typed view of eta records, Chicago -> UTC conversion
   storage/raw_store.py          Immutable, partitioned raw JSON writer
   uploaders/volume_uploader.py  Idempotent upload of raw files to a Databricks volume
+  jobs/scheduled_collection.py  Scheduled session: collect, upload periodically, write run summary
+  jobs/run_lock.py              Prevents overlapping scheduled runs
   config/settings.py            Environment-driven configuration
   tests/                        pytest suite and fixtures
 data/
@@ -220,11 +237,15 @@ databricks/
   bronze_ingestion.py           Notebook: Auto Loader + MERGE into the Bronze Delta table
   silver_transformation.py      Notebook: validate, type and deduplicate into Silver tables
   gold_metrics.py               Notebook: inferred arrivals, accuracy, headways, consistency
+  pipeline_health.py            Notebook: run status, freshness, coverage -> cta_ops tables
+  deploy_job.py                 Sync code + create/update the Lakeflow Job (jobs as code)
   run_local.py                  Run Bronze -> Silver -> Gold locally on data/raw
   cta_lakehouse/                Tested PySpark transformations + table definitions
   tests/                        Local Spark tests + a CTA polling simulator with known arrivals
+scripts/                        Schedulers for the collector (Windows Task Scheduler, macOS launchd)
 docs/
   architecture.md               Design decisions and roadmap
+  operations.md                 Scheduling, monitoring and recovery runbook
   databricks_setup.md           Phase 2 setup, verification and recovery
 ```
 

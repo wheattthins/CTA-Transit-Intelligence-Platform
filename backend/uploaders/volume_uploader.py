@@ -29,7 +29,8 @@ from backend.config.settings import PROJECT_ROOT, Settings, SettingsError, load_
 
 logger = logging.getLogger("cta.uploader")
 
-RAW_FILE_GLOB = "arrivals_*.json"
+# Observation files (Bronze input) and collector run summaries (operational monitoring).
+RAW_FILE_GLOBS = ("arrivals_*.json", "collector_run_*.json")
 EXIT_OK, EXIT_PARTIAL_FAILURE, EXIT_CONFIG_ERROR = 0, 1, 2
 
 
@@ -105,7 +106,8 @@ class UploadSummary:
 def find_partitions(local_root: Path) -> dict[PurePosixPath, list[Path]]:
     """Group local raw files by their directory, relative to ``local_root``."""
     partitions: dict[PurePosixPath, list[Path]] = {}
-    for path in sorted(local_root.rglob(RAW_FILE_GLOB)):
+    paths = sorted({p for pattern in RAW_FILE_GLOBS for p in local_root.rglob(pattern)})
+    for path in paths:
         rel_dir = PurePosixPath(path.parent.relative_to(local_root).as_posix())
         partitions.setdefault(rel_dir, []).append(path)
     return partitions

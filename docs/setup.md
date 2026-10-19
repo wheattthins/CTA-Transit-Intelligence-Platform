@@ -88,7 +88,7 @@ Exit codes: `0` all requests succeeded, `1` one or more failed, `2` configuratio
 | Variable | Default | Notes |
 |---|---|---|
 | `CTA_API_KEY` | none | Required for live mode |
-| `CTA_STATION_IDS` | `41320` | Comma-separated parent station IDs (`4xxxx`) |
+| `CTA_STATION_IDS` | `41320` | Comma-separated parent station IDs (`4xxxx`); set this to add stations/lines |
 | `CTA_POLL_INTERVAL_SECONDS` | `60` | Minimum 30 |
 | `CTA_REQUEST_TIMEOUT_SECONDS` | `10` | |
 | `CTA_MAX_ATTEMPTS` | `3` | Total attempts for transient failures |

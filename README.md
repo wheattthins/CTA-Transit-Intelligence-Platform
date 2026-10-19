@@ -115,7 +115,6 @@ python -m backend.collectors.train_tracker --sample   # offline sample mode, cle
 python -m pytest                                      # Spark tests need Java 17+
 
 cd frontend && npm install && npm run dev             # dashboard at http://localhost:5173
-## New DATABRICKS_TOKEN: dapi13fc9c8da32cba8b8f4e6100293557f7
 ```
 
 For live collection, Databricks and scheduling, see the full [setup and usage guide](docs/setup.md).

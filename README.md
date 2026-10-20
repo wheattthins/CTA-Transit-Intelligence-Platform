@@ -11,8 +11,10 @@ did. This project collects every prediction, **infers real arrival times** from 
 the data through an automated Databricks lakehouse to measure prediction accuracy, headways,
 bunching and service gaps, all shown on an interactive dashboard.
 
-<!-- TODO(launch): live dashboard link: https://wheattthins.github.io/CTA-Transit-Intelligence-Platform/ -->
-<!-- TODO(launch): dashboard screenshot or GIF, e.g. ![Dashboard](docs/images/dashboard.png) -->
+**[Live dashboard →](https://wheattthins.github.io/CTA-Transit-Intelligence-Platform/)**
+
+![Dashboard](docs/images/dashboard.png)
+
 <!-- TODO(launch): paste the dashboard URL into https://www.linkedin.com/post-inspector/ to check
      the preview card (frontend/index.html og: tags) and refresh LinkedIn's cache before posting. -->
 

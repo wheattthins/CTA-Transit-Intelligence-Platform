@@ -1,43 +1,45 @@
 {
   "schema_version": 1,
-  "exported_at_ms": 1792702713888,
+  "exported_at_ms": 1792761857725,
   "source": "databricks:workspace",
-  "git_commit": "fba61d9",
+  "git_commit": "b1b9ec6",
   "history_days": 30,
   "first_service_date": "2026-10-15",
   "last_service_date": "2026-10-22",
   "freshness": {
-    "latest_observation_ms": 1792695605219,
+    "latest_observation_ms": 1792702805530,
     "first_observation_ms": 1792070675973,
-    "observations": 9373,
-    "successful_observations": 9373
+    "observations": 9733,
+    "successful_observations": 9733
   },
   "latest_health": {
-    "checked_at_ms": 1792696514755,
-    "job_run_id": "192061698114456",
-    "status": "healthy",
-    "issues": [],
-    "bronze_files_read": 360,
-    "silver_rows_processed": 360,
-    "gold_train_visits": 10937,
-    "staleness_minutes": 15.2,
-    "polls_24h": 1395,
+    "checked_at_ms": 1792761274162,
+    "job_run_id": "893912580258404",
+    "status": "stale",
+    "issues": [
+      "stale_data"
+    ],
+    "bronze_files_read": 0,
+    "silver_rows_processed": 0,
+    "gold_train_visits": 11199,
+    "staleness_minutes": 974.5,
+    "polls_24h": 1356,
     "api_success_rate_24h": 1.0,
     "reject_rate_24h": 0.0004,
-    "coverage_pct_24h": 32.3,
+    "coverage_pct_24h": 31.4,
     "bronze_backlog": 0,
     "collector_failed_requests_24h": 0
   },
   "files": {
-    "daily_line_metrics": 463,
+    "daily_line_metrics": 473,
     "daily_accuracy_by_horizon": 1310,
-    "headways": 3207,
+    "headways": 3396,
     "recent_arrivals": 300,
-    "visit_outcomes": 476,
-    "coverage": 570,
-    "latest_snapshot": 107,
+    "visit_outcomes": 484,
+    "coverage": 576,
+    "latest_snapshot": 120,
     "stations": 26,
-    "pipeline_runs": 91
+    "pipeline_runs": 100
   },
   "notes": [
     "Arrival times are INFERRED from when trains disappear from CTA's prediction feed; CTA does not publish actual arrival times.",

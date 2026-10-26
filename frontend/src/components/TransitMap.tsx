@@ -4,11 +4,13 @@ import { Map as MapLibre, NavigationControl, Popup, setWorkerUrl, type GeoJSONSo
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { useEffect, useMemo, useRef } from "react";
 import { dataUrl } from "../lib/data";
-import { formatLocalTime } from "../lib/format";
+import { formatTimeOfDay } from "../lib/format";
+import type { LiveFeed, TrainMarker } from "../lib/live";
 import { ROUTE_NAMES, ROUTE_ORDER, routeColor } from "../lib/routes";
-import type { RouteCode, SnapshotPrediction } from "../lib/types";
+import type { RouteCode } from "../lib/types";
 import { Card } from "./ui/Card";
 import { Key } from "./ui/Legend";
+import { LiveBadge } from "./ui/LiveBadge";
 
 // Free OpenStreetMap-based vector basemaps (no API key): https://openfreemap.org
 const BASEMAP = {
@@ -47,10 +49,11 @@ function popupContent(title: string, lines: string[]): HTMLElement {
   return root;
 }
 
-/** CTA 'L' network with monitored stations and the latest exported train positions. */
-export function TransitMap({ isDark, snapshot, monitored, selectedStation, onSelectStation }: {
+/** CTA 'L' network with monitored stations and train positions: live when the feed is up, else the latest export. */
+export function TransitMap({ isDark, trains: markers, live, monitored, selectedStation, onSelectStation }: {
   isDark: boolean;
-  snapshot: SnapshotPrediction[];
+  trains: TrainMarker[];
+  live: LiveFeed;
   monitored: MonitoredStation[];
   selectedStation: string | "all";
   onSelectStation: (id: string | "all") => void;
@@ -64,19 +67,13 @@ export function TransitMap({ isDark, snapshot, monitored, selectedStation, onSel
   const trains = useMemo(
     () => ({
       type: "FeatureCollection" as const,
-      features: snapshot
-        .filter((p) => p.latitude !== null && p.longitude !== null)
-        .map((p) => ({
-          type: "Feature" as const,
-          geometry: { type: "Point" as const, coordinates: [p.longitude!, p.latitude!] },
-          properties: {
-            route: p.route_code,
-            title: `${ROUTE_NAMES[p.route_code]} Line run ${p.run_number} to ${p.destination_name}`,
-            detail: `Predicted at ${p.station_name} ${formatLocalTime(p.predicted_arrival_chicago)}${p.is_delayed ? " · delayed" : ""}`,
-          },
-        })),
+      features: markers.map((m) => ({
+        type: "Feature" as const,
+        geometry: { type: "Point" as const, coordinates: [m.longitude, m.latitude] },
+        properties: { route: m.route_code, title: m.title, detail: m.detail },
+      })),
     }),
-    [snapshot],
+    [markers],
   );
   const stationsGeo = useMemo(
     () => ({
@@ -208,10 +205,13 @@ export function TransitMap({ isDark, snapshot, monitored, selectedStation, onSel
     if (s) mapRef.current?.flyTo({ center: [s.lon, s.lat], zoom: 13, duration: 800 });
   }, [selectedStation, monitored]);
 
+  const liveAt = live.data?.fetched_at_ms;
   return (
     <Card
       title="Chicago 'L' network"
-      subtitle="Monitored stations, and train positions from the latest exported snapshot (not live)"
+      subtitle={liveAt
+        ? <><LiveBadge status={live.status} />Monitored stations, and every train on the 'L' as of {formatTimeOfDay(liveAt)}</>
+        : `Monitored stations, and train positions from the latest exported snapshot (${live.status === "unavailable" ? "live feed unavailable" : "not live"})`}
       actions={selectedStation !== "all" ? (
         <button type="button" onClick={() => onSelectStation("all")} className="text-[12px] font-medium text-accent hover:underline">
           Show all stations

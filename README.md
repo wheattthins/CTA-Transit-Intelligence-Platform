@@ -43,6 +43,8 @@ flowchart LR
     end
     G --> E["Static JSON export"]
     E --> D["React dashboard<br/>(GitHub Pages)"]
+    API --> L["Vercel function<br/>(holds key, 30 s CDN cache)"]
+    L -->|live map + next trains| D
 ```
 
 Collection runs **outside** Databricks, because Databricks Free Edition restricts outbound internet
@@ -89,7 +91,8 @@ The main trade-offs, what each one costs, and how it would change at larger scal
 | **Keep the same prediction seen in consecutive polls**, linked by a fingerprint | Deduplicating it away | Each sighting is a real observation, and the arrival inference depends on them. True duplicates (same file twice, same record twice in a response) are still removed. |
 | **Recompute Gold in full** and overwrite atomically | Incremental Gold updates | A train visit spans many Silver batches, so incremental logic would be fragile. *At scale:* recompute only recent service dates with `replaceWhere`. |
 | **No table partitioning** | Partitioning by date | At thousands to low millions of small rows, partitions mean many tiny files, and Delta data skipping is enough. *At scale:* add liquid clustering without code changes. |
-| **Static JSON export** with exact aggregation in the browser | An API server or live warehouse queries | The data is small and changes only when the pipeline runs, so it hosts free on GitHub Pages with no server. *Cost:* the dashboard is as fresh as the last export, and says so. |
+| **Static JSON export** with exact aggregation in the browser | An API server or live warehouse queries | The data is small and changes only when the pipeline runs, so it hosts free on GitHub Pages with no server. *Cost:* the analytics are as fresh as the last export, and say so. |
+| **Live map and board through a caching Vercel function** | Calling CTA from the browser | CTA sends no CORS headers, and a key in a static site is public. The function holds the key and relays CTA's responses unmodified, and the CDN caches them for 30 s, so CTA traffic doesn't grow with visitors. *Cost:* one more thing to deploy; without it the map and board fall back to the export. |
 | **Hour-long scheduled collector sessions** | A long-running polling daemon | A crash costs at most an hour, and connection and memory state reset regularly. A lock file prevents overlapping runs. |
 | **Jobs as code with the Databricks SDK**, tagged with the git commit | Asset Bundles or configuring the job in the UI | Same idea as bundles without adding the CLI as a dependency, and the deploy refuses uncommitted changes. |
 
@@ -102,7 +105,7 @@ in [docs/architecture.md](docs/architecture.md).
 |---|---|
 | Collection | Python 3.11+, `requests`, `tenacity`, launchd / Task Scheduler |
 | Lakehouse | Databricks (Free Edition), Unity Catalog, Delta Lake, Auto Loader, PySpark, Lakeflow Jobs |
-| Dashboard | React, TypeScript, Vite, Tailwind CSS, Recharts, MapLibre GL |
+| Dashboard | React, TypeScript, Vite, Tailwind CSS, Recharts, MapLibre GL; Vercel Functions for live data |
 | Quality and delivery | pytest, Vitest, Ruff, oxlint, GitHub Actions, GitHub Pages |
 
 ## Quick start
@@ -155,6 +158,7 @@ databricks/
   cta_lakehouse/                Tested PySpark transformations + table definitions
   tests/                        Local Spark tests + a CTA polling simulator with known arrivals
 frontend/                       React dashboard (src/lib = data + exact aggregation, src/components = UI)
+live-api/                       Vercel function relaying live CTA positions + arrivals (holds the key, CDN-cached)
 scripts/                        Collector schedulers; map geodata builder
 data/                           Raw and sample-run output (git-ignored); labeled SAMPLE fixture
 docs/                           Setup, architecture, operations and dashboard docs

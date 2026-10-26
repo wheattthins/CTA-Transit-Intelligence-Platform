@@ -1,7 +1,8 @@
 # Builds the React dashboard and publishes it to GitHub Pages.
 # One-time setup: repository Settings -> Pages -> Source: "GitHub Actions".
 # The dashboard reads the committed static export in frontend/public/data; refresh it with
-# `python databricks/export_dashboard_data.py` and push.
+# `python databricks/export_dashboard_data.py` and push. The map and next-trains board also poll the
+# live-api Vercel function (live-api/, deployed separately) and fall back to the export without it.
 name: Dashboard
 
 on:
@@ -38,6 +39,7 @@ jobs:
       - run: npm run build
         env:
           VITE_BASE: /${{ github.event.repository.name }}/
+          VITE_LIVE_API_URL: https://cta-transit-live.vercel.app/api/live
       - uses: actions/upload-pages-artifact@v3
         if: github.event_name != 'pull_request'
         with:

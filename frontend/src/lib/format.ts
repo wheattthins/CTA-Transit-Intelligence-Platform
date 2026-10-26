@@ -14,6 +14,11 @@ export function formatInstant(ms: number, opts: Intl.DateTimeFormatOptions = {})
   }).format(new Date(ms));
 }
 
+/** Epoch ms -> "2:50:18 PM CDT": Chicago time of day to the second, for live data. */
+export function formatTimeOfDay(ms: number): string {
+  return formatInstant(ms, { month: undefined, day: undefined, second: "2-digit" });
+}
+
 /** "2026-10-15T08:01:05" (already Chicago local) -> "8:01 AM". Parsed without time-zone conversion. */
 export function formatLocalTime(iso: string, withSeconds = false): string {
   const [, time] = iso.split("T");

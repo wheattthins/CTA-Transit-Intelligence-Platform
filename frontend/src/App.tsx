@@ -13,6 +13,7 @@ import { NextTrains } from "./components/NextTrains";
 import { RecentArrivals } from "./components/RecentArrivals";
 import { dataUrl, loadDashboardData } from "./lib/data";
 import { formatServiceDate } from "./lib/format";
+import { positionMarkers, snapshotMarkers, useLiveFeed } from "./lib/live";
 import { DEFAULT_FILTERS, dateFloor, filterRows, routesIn, summarizeService, type Filters } from "./lib/metrics";
 import { sortRoutes } from "./lib/routes";
 import { useTheme } from "./lib/theme";
@@ -32,6 +33,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [geoStations, setGeoStations] = useState<StationPoint[]>([]);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const live = useLiveFeed();
 
   useEffect(() => {
     loadDashboardData().then(setData).catch((e: Error) => setError(e.message));
@@ -57,12 +59,26 @@ export default function App() {
       headways: filterRows(data.headways, filters, last),
       summary: summarizeService(daily),
       arrivals: byRouteStation(data.arrivals).filter((a) => !floor || a.inferred_arrival_chicago.slice(0, 10) >= floor),
-      snapshot: byRouteStation(data.snapshot),
       outcomes: byRouteStation(data.outcomes).filter((o) => !floor || o.service_date >= floor),
       coverage: data.coverage.filter((c) => (filters.stationId === "all" || c.station_id === filters.stationId)
         && (!floor || c.service_date >= floor) && (filters.dayType === "all" || c.day_type === filters.dayType)),
     };
   }, [data, filters]);
+
+  // Map and board: the live feed once it has answered, else the exported snapshot. Live positions cover
+  // every train, so only the line filter applies to them; the station filter zooms the map instead.
+  const current = useMemo(() => {
+    if (!data) return null;
+    const byRoute = <T extends { route_code: RouteCode }>(rows: T[]) =>
+      rows.filter((r) => !filters.routes.length || filters.routes.includes(r.route_code));
+    const byStation = <T extends { station_id: string }>(rows: T[]) =>
+      rows.filter((r) => filters.stationId === "all" || r.station_id === filters.stationId);
+    if (live.data) {
+      return { trains: positionMarkers(byRoute(live.data.positions)), predictions: byStation(byRoute(live.data.predictions)) };
+    }
+    const snapshot = byStation(byRoute(data.snapshot));
+    return { trains: snapshotMarkers(snapshot), predictions: snapshot };
+  }, [data, live.data, filters]);
 
   const stations = useMemo(() => {
     const names = new Map<string, string>();
@@ -90,7 +106,7 @@ export default function App() {
       </main>
     );
   }
-  if (!data || !view) {
+  if (!data || !view || !current) {
     return <main className="p-8 text-[14px] text-ink-2" aria-busy="true">Loading CTA data…</main>;
   }
 
@@ -121,12 +137,12 @@ export default function App() {
         <div className="grid gap-4 xl:grid-cols-5">
           <div className="min-w-0 xl:col-span-3">
             <Suspense fallback={<div className="h-[560px] rounded-xl border border-hairline bg-surface" aria-busy="true" />}>
-              <TransitMap isDark={isDark} snapshot={view.snapshot} monitored={stations.monitored}
+              <TransitMap isDark={isDark} trains={current.trains} live={live} monitored={stations.monitored}
                 selectedStation={filters.stationId} onSelectStation={(id) => setFilters({ ...filters, stationId: id })} />
             </Suspense>
           </div>
           <div className="min-w-0 xl:col-span-2">
-            <NextTrains snapshot={view.snapshot} />
+            <NextTrains predictions={current.predictions} live={live} />
           </div>
         </div>
         <div className="grid gap-4 xl:grid-cols-2">

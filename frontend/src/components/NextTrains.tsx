@@ -1,23 +1,28 @@
-import { formatInstant, formatLocalTime } from "../lib/format";
+import { formatInstant, formatLocalTime, formatTimeOfDay } from "../lib/format";
+import type { LiveFeed } from "../lib/live";
 import { ROUTE_NAMES, routeColor } from "../lib/routes";
 import type { SnapshotPrediction } from "../lib/types";
 import { Card, EmptyState } from "./ui/Card";
+import { LiveBadge } from "./ui/LiveBadge";
 
-/** The latest exported Train Tracker snapshot, as a departures board. Not live data. */
-export function NextTrains({ snapshot }: { snapshot: SnapshotPrediction[] }) {
-  const observed = snapshot[0]?.observed_at_ms;
+/** Predictions for the monitored stations as a departures board: live when the feed is up, else the latest export. */
+export function NextTrains({ predictions, live }: { predictions: SnapshotPrediction[]; live: LiveFeed }) {
+  const liveAt = live.data?.fetched_at_ms;
+  const observed = predictions[0]?.observed_at_ms;
   const byPlatform = new Map<string, SnapshotPrediction[]>();
-  for (const p of snapshot) {
+  for (const p of predictions) {
     const key = `${p.station_name} · ${p.stop_description}`;
     byPlatform.set(key, [...(byPlatform.get(key) ?? []), p]);
   }
   return (
     <Card
-      title="Latest snapshot"
-      subtitle={observed ? `CTA predictions as of ${formatInstant(observed)} - a static export, not live` : "No snapshot"}
+      title={liveAt ? "Next trains" : "Latest snapshot"}
+      subtitle={liveAt
+        ? <><LiveBadge status={live.status} />CTA predictions as of {formatTimeOfDay(liveAt)}</>
+        : observed ? `CTA predictions as of ${formatInstant(observed)} - a static export, not live` : "No snapshot"}
     >
-      {!snapshot.length ? (
-        <EmptyState>No predictions in the latest snapshot for these filters.</EmptyState>
+      {!predictions.length ? (
+        <EmptyState>{liveAt ? "No live predictions for these filters." : "No predictions in the latest snapshot for these filters."}</EmptyState>
       ) : (
         <div className="max-h-[420px] space-y-4 overflow-auto pr-1">
           {[...byPlatform].map(([platform, preds]) => (

@@ -89,6 +89,7 @@ FROM workspace.cta_ops.collector_runs ORDER BY started_at_utc DESC LIMIT 24;
 | Daily quota exceeded | Compute unavailable until tomorrow | Nothing is lost: files keep landing and the next run catches up. Consider `--cron "0 10 0/4 * * ?"` (every 4 h) |
 | CTA changed its response format | Rejects spike (`high_reject_rate`) | Bronze kept the raw JSON. Update Silver, deploy, `full_refresh` |
 | Dashboard map says "live feed unavailable" or "Reconnecting" | `curl https://cta-transit-live.vercel.app/api/live`: the `error` field names the failing CTA call; `npx vercel logs` in `live-api/` | CTA outage: nothing to do, it recovers on its own. `CTA error 101/102`: fix `CTA_API_KEY` in Vercel and redeploy, or give the function its own key. Analytics are unaffected either way |
+| Every `cta-transit-live.vercel.app` URL returns 404 `NOT_FOUND` | Vercel → project → Settings → Build: is Root Directory `live-api`? The deployment's build log finishes in ~100 ms with no TypeScript step | Set Root Directory to `live-api` and redeploy. To restore service at once, promote the last good deployment: `npx vercel promote <deployment-url>` |
 
 **Why re-running is always safe:** the collector never overwrites files (UUID names, exclusive
 create); the uploader skips files already in the volume; Bronze reads each file once (Auto Loader

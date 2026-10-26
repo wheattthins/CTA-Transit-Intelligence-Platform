@@ -51,13 +51,15 @@ stations (4 stations per call, CTA's limit). It relays CTA's JSON unmodified, an
 - **Filters:** live positions cover every train, so only the line filter applies on the map; the
   station filter zooms to the station. The board applies both.
 
-Deploy (the Vercel CLI, from `live-api/`; the project is `cta-transit-live`):
+Deploy: the Vercel project `cta-transit-live` is connected to this GitHub repo with **Root Directory
+`live-api`**, so every push to `main` deploys the function (other branches get preview deployments,
+which have no CTA key). Without the Root Directory setting, Vercel builds the repo root, finds no
+function, and every URL returns 404. To redeploy without a push, use **Redeploy** on the latest
+deployment in the Vercel dashboard. The two environment variables are set once (Production only):
 ```powershell
 cd live-api
-npx vercel link --project cta-transit-live
 npx vercel env add CTA_API_KEY production --sensitive   # paste the key when prompted
 npx vercel env add CTA_STATION_IDS production           # the monitored stations, e.g. 41320,40380,40900
-npx vercel deploy --prod
 ```
 `dashboard.yml` builds with `VITE_LIVE_API_URL=https://cta-transit-live.vercel.app/api/live`.
 For live data in local dev, run `$env:VITE_LIVE_API_URL="https://cta-transit-live.vercel.app/api/live"; npm run dev`.

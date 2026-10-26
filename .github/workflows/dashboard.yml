@@ -2,7 +2,7 @@
 # One-time setup: repository Settings -> Pages -> Source: "GitHub Actions".
 # The dashboard reads the committed static export in frontend/public/data; refresh it with
 # `python databricks/export_dashboard_data.py` and push. The map and next-trains board also poll the
-# live-api Vercel function (live-api/, deployed separately) and fall back to the export without it.
+# live-api Vercel function (live-api/, deployed by Vercel on push) and fall back to the export without it.
 name: Dashboard
 
 on:

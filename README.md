@@ -20,13 +20,23 @@ bunching and service gaps, all shown on an interactive dashboard.
 
 ## Key findings
 
-<!-- TODO(launch): fill in after 2–4 weeks of continuous collection. Lead with numbers, e.g.
-- Predictions 10+ minutes out are off by X min on average; under 2 minutes, by Y s.
-- The <line> Line has the most bunching: Z% of headways under 2 minutes at rush hour.
-- Unexpected service gaps (≥ 2× the typical headway) happen N times per day at <station>.
-State the sample size (days, stations, trains) alongside each finding. -->
+*Early results: 10 service days (Oct 15–26, 2026) at 9 stations (3 since Oct 19), from 5,955
+inferred arrivals and 117,105 scored predictions. Since Oct 19, collection has run on weekdays,
+mostly 7 AM–5 PM, so evenings, weekends and the Pink and Yellow lines are too thin to report yet.*
 
-*Based on N days of data across N stations (N train arrivals inferred).*
+- **Predictions get less accurate the further ahead they are.** Under 2 minutes out they're off by
+  40 s on average, and 88% land within a minute (4,934 predictions). At 20+ minutes out it's 155 s
+  and 29% (40,287 predictions). These figures exclude Howard (see below).
+- **Trains tend to arrive later than predicted,** by 45 s on average across all lead times
+  (96,716 predictions, excluding Howard).
+- **Howard is the outlier, and it's an open question.** Red Line predictions under 2 minutes out
+  are off by 244 s there (776 predictions), against 25–26 s at Belmont and Roosevelt. The error is
+  on trains *ending* their trip at Howard, which may stay listed in the feed while they lay over.
+  That is where inferring arrivals from the feed is weakest, so it may say more about the method
+  than about CTA.
+- **Bunching is rare in this sample.** The Red Line bunches most: 2.7% of 1,148 headways were
+  under 2 minutes. About 6–8% of gaps on the Red, Blue, Brown and Orange lines were at least twice
+  the typical headway.
 
 ## How it works
 

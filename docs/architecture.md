@@ -250,8 +250,13 @@ small (serverless can't cache). At larger scale, recompute only recent service d
 - Holidays are treated as normal weekdays or weekends.
 - Run numbers are CTA's operational IDs and can change mid-trip. Such trains appear as
   `vanished_before_arrival` plus a new visit.
+- Terminal arrivals look suspect. At Howard, short-range Red Line errors are about 10× those at
+  other stations (244 s vs 25–40 s under 2 minutes out), all on trains ending their trip there.
+  A train laying over at a terminal may stay in the feed after it arrives, which would push the
+  inferred arrival late. Until that's checked, treat accuracy at terminal platforms with caution.
 - Small samples: rolled-up rows show `predictions` and `train_visits` counts. Read them before
-  trusting a percentage.
+  trusting a percentage. The dashboard leaves out figures from fewer than 100 scored predictions
+  or 10 headways.
 
 ## Phase 5 decisions: automation and reliability
 

@@ -1,7 +1,16 @@
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { fmt, niceTicks } from "../../lib/format";
-import { groupSummaries, routesIn, summarizeService, type ServiceSummary } from "../../lib/metrics";
+import {
+  MIN_HEADWAYS,
+  MIN_SCORED_PREDICTIONS,
+  groupSummaries,
+  ifEnoughHeadways,
+  ifEnoughPredictions,
+  routesIn,
+  summarizeService,
+  type ServiceSummary,
+} from "../../lib/metrics";
 import { ROUTE_NAMES } from "../../lib/routes";
 import type { DailyLineMetrics } from "../../lib/types";
 import { Card, EmptyState } from "../ui/Card";
@@ -11,10 +20,10 @@ import { Segmented } from "../ui/Segmented";
 
 type Metric = "headway" | "cv" | "mae" | "within1";
 const METRICS: Record<Metric, { label: string; get: (s: ServiceSummary) => number | null; format: (v: number | null) => string }> = {
-  headway: { label: "Avg headway", get: (s) => s.avgHeadway, format: (v) => fmt.minutes(v) },
-  cv: { label: "Regularity (CV)", get: (s) => s.headwayCv, format: fmt.ratio },
-  mae: { label: "Avg error", get: (s) => s.maeSeconds, format: fmt.seconds },
-  within1: { label: "Within 1 min", get: (s) => s.pctWithin1, format: (v) => fmt.pct(v) },
+  headway: { label: "Avg headway", get: (s) => ifEnoughHeadways(s, s.avgHeadway), format: (v) => fmt.minutes(v) },
+  cv: { label: "Regularity (CV)", get: (s) => ifEnoughHeadways(s, s.headwayCv), format: fmt.ratio },
+  mae: { label: "Avg error", get: (s) => ifEnoughPredictions(s, s.maeSeconds), format: fmt.seconds },
+  within1: { label: "Within 1 min", get: (s) => ifEnoughPredictions(s, s.pctWithin1), format: (v) => fmt.pct(v) },
 };
 
 /** Rush hour vs the rest, per line: two steps of one hue (ordered comparison, not identity). */
@@ -28,6 +37,7 @@ export function RushComparison({ rows }: { rows: DailyLineMetrics[] }) {
     rush: m.get(groups.get(`${r}|rush`) ?? summarizeService([])),
     off: m.get(groups.get(`${r}|off`) ?? summarizeService([])),
   }));
+  const charted = data.filter((d) => d.rush !== null || d.off !== null); // lines with at least one bar
   const hasRush = rows.some((r) => r.is_rush_hour);
   const yMax = Math.max(0, ...data.flatMap((d) => [d.rush ?? 0, d.off ?? 0]));
   const yTicks = metric === "within1" ? [0, 25, 50, 75, 100] : niceTicks(yMax);
@@ -46,10 +56,13 @@ export function RushComparison({ rows }: { rows: DailyLineMetrics[] }) {
           { key: "o", header: "Other times", align: "right", render: (d) => m.format(d.off) },
         ],
       }}
-      footer={!hasRush ? "No rush-hour data in this slice." : !rows.some((r) => !r.is_rush_hour) ? "No off-peak data in this slice yet - collect outside rush hours to compare." : undefined}
+      footer={[
+        !hasRush ? "No rush-hour data in this slice." : !rows.some((r) => !r.is_rush_hour) ? "No off-peak data in this slice yet - collect outside rush hours to compare." : "",
+        `Bars need at least ${MIN_HEADWAYS} headways (${MIN_SCORED_PREDICTIONS} scored predictions for accuracy); smaller samples show as "—" in the table.`,
+      ].filter(Boolean).join(" ")}
     >
-      {!routes.length ? (
-        <EmptyState>No data for these filters.</EmptyState>
+      {!charted.length ? (
+        <EmptyState>{routes.length ? "Not enough data to chart for these filters. The table lists what there is." : "No data for these filters."}</EmptyState>
       ) : (
         <>
           <ul className="mb-2 flex gap-4 text-[12px] text-ink-2" aria-label="Legend">
@@ -57,7 +70,7 @@ export function RushComparison({ rows }: { rows: DailyLineMetrics[] }) {
             <li className="flex items-center gap-1.5"><Key color="var(--ord-light)" mark="rect" />Other times</li>
           </ul>
           <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={data} barGap={2} barCategoryGap="30%" margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
+            <BarChart data={charted} barGap={2} barCategoryGap="30%" margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
               <CartesianGrid vertical={false} />
               <XAxis dataKey="route" tickLine={false} />
               <YAxis tickLine={false} axisLine={false} width={48} ticks={yTicks} domain={[0, yTicks[yTicks.length - 1]]} />

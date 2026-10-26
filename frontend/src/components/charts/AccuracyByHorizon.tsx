@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { fmt, niceTicks } from "../../lib/format";
-import { accuracyByHorizon } from "../../lib/metrics";
+import { MIN_SCORED_PREDICTIONS, accuracyByHorizon } from "../../lib/metrics";
 import { ROUTE_NAMES, routeColor } from "../../lib/routes";
 import type { DailyAccuracyByHorizon, RouteCode } from "../../lib/types";
 import { Card, EmptyState } from "../ui/Card";
@@ -14,6 +14,7 @@ type Metric = "mae" | "within1";
 export function AccuracyByHorizon({ rows }: { rows: DailyAccuracyByHorizon[] }) {
   const [metric, setMetric] = useState<Metric>("mae");
   const { routes, data } = accuracyByHorizon(rows, metric);
+  const charted = routes.filter((r) => data.some((d) => d[r] !== null)); // lines with at least one bar
   const format = metric === "mae" ? fmt.seconds : (v: number | null) => fmt.pct(v);
   const yMax = Math.max(0, ...data.flatMap((d) => routes.map((r) => (d[r] as number | null) ?? 0)));
   const yTicks = metric === "within1" ? [0, 25, 50, 75, 100] : niceTicks(yMax);
@@ -48,13 +49,17 @@ export function AccuracyByHorizon({ rows }: { rows: DailyAccuracyByHorizon[] }) 
           { key: "n", header: "Predictions", align: "right", render: (r) => fmt.int(r.n) },
         ],
       }}
-      footer="Scored: live predictions on high/medium-confidence inferred arrivals. Small samples are noisy - check the counts in the table."
+      footer={`Scored: live predictions on high/medium-confidence inferred arrivals. Bars need at least ${MIN_SCORED_PREDICTIONS} predictions; smaller samples show as "—" in the table.`}
     >
-      {tableRows.length === 0 ? (
-        <EmptyState>No scored predictions for these filters yet.</EmptyState>
+      {charted.length === 0 ? (
+        <EmptyState>
+          {tableRows.length === 0
+            ? "No scored predictions for these filters yet."
+            : `Too few scored predictions to chart for these filters (each bar needs ${MIN_SCORED_PREDICTIONS}). The table lists what there is.`}
+        </EmptyState>
       ) : (
         <>
-          <RouteLegend routes={routes} mark="rect" />
+          <RouteLegend routes={charted} mark="rect" />
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={data} barGap={2} barCategoryGap="22%" margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
               <CartesianGrid vertical={false} />
@@ -89,7 +94,7 @@ export function AccuracyByHorizon({ rows }: { rows: DailyAccuracyByHorizon[] }) 
                   ) : null
                 }
               />
-              {routes.map((r) => (
+              {charted.map((r) => (
                 <Bar key={r} dataKey={r} fill={routeColor(r)} radius={[4, 4, 0, 0]} maxBarSize={24} isAnimationActive={false} />
               ))}
             </BarChart>

@@ -10,6 +10,9 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "noEmit": true,
+    // Vercel compiles through a temp tsconfig in /tmp that extends this one; an explicit typeRoots
+    // (resolved relative to this file) keeps @types/node findable from there.
+    "typeRoots": ["./node_modules/@types"],
     "types": ["node"]
   },
   "include": ["api"]

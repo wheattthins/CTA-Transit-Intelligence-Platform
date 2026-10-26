@@ -115,6 +115,21 @@ export function summarizeService(rows: DailyLineMetrics[]): ServiceSummary {
   };
 }
 
+// Below these sample sizes a figure says more about luck than about service, so charts leave it out.
+// Predictions come in runs (one per poll while a train approaches), so 100 is only a few dozen trains.
+export const MIN_SCORED_PREDICTIONS = 100;
+export const MIN_HEADWAYS = 10;
+
+/** An accuracy figure, or null when it rests on too few scored predictions. */
+export function ifEnoughPredictions(s: AccuracySummary, value: number | null): number | null {
+  return s.scored >= MIN_SCORED_PREDICTIONS ? value : null;
+}
+
+/** A headway figure, or null when it rests on too few headways. */
+export function ifEnoughHeadways(s: ServiceSummary, value: number | null): number | null {
+  return s.headways >= MIN_HEADWAYS ? value : null;
+}
+
 /** Group rows by a key and summarize each group. */
 export function groupSummaries<T, K extends string, S>(
   rows: T[],
@@ -135,7 +150,7 @@ export function routesIn(rows: { route_code: RouteCode }[]): RouteCode[] {
   return sortRoutes(rows.map((r) => r.route_code));
 }
 
-/** Accuracy by lead time: one row per horizon bucket, one numeric field per route. */
+/** Accuracy by lead time: one row per horizon bucket, one numeric field per route (null if too few predictions). */
 export function accuracyByHorizon(rows: DailyAccuracyByHorizon[], metric: "mae" | "within1") {
   const routes = routesIn(rows);
   const byKey = groupSummaries(rows, (r) => `${r.horizon_bucket}|${r.route_code}`, summarizeAccuracy);
@@ -145,7 +160,7 @@ export function accuracyByHorizon(rows: DailyAccuracyByHorizon[], metric: "mae" 
       const row: Record<string, number | string | null> = { bucket };
       for (const route of routes) {
         const s = byKey.get(`${bucket}|${route}`);
-        row[route] = s ? (metric === "mae" ? s.maeSeconds : s.pctWithin1) : null;
+        row[route] = s ? ifEnoughPredictions(s, metric === "mae" ? s.maeSeconds : s.pctWithin1) : null;
         row[`${route}__n`] = s?.scored ?? 0;
       }
       return row;

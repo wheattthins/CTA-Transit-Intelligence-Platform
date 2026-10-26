@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_FILTERS,
+  MIN_HEADWAYS,
+  MIN_SCORED_PREDICTIONS,
   accuracyByHorizon,
   dateFloor,
   filterRows,
+  ifEnoughHeadways,
+  ifEnoughPredictions,
   seriesBy,
   summarizeAccuracy,
   summarizeService,
@@ -96,12 +100,30 @@ describe("chart shaping", () => {
     const h = (bucket: DailyAccuracyByHorizon["horizon_bucket"], route: DailyAccuracyByHorizon["route_code"], n: number) =>
       ({ ...daily({ route_code: route }), horizon_bucket: bucket, scored_predictions: n,
          abs_error_sum_seconds: n * 30 } as DailyAccuracyByHorizon);
-    const { routes, data } = accuracyByHorizon([h("20+ min", "P", 4), h("00-02 min", "Red", 10)], "mae");
+    const { routes, data } = accuracyByHorizon([h("20+ min", "P", 400), h("00-02 min", "Red", 200)], "mae");
     expect(routes).toEqual(["Red", "P"]); // canonical line order, not data order
     expect(data.map((d) => d.bucket)[0]).toBe("00-02 min");
     expect(data[0].Red).toBe(30);
     expect(data[0].P).toBeNull();
-    expect(data[0]["Red__n"]).toBe(10);
+    expect(data[0]["Red__n"]).toBe(200);
+  });
+
+  it("hides accuracy resting on too few predictions, but keeps the count", () => {
+    const h = (n: number) => ({ ...daily({ route_code: "Y" }), horizon_bucket: "00-02 min", scored_predictions: n,
+      abs_error_sum_seconds: n * 600 } as DailyAccuracyByHorizon);
+    const small = accuracyByHorizon([h(MIN_SCORED_PREDICTIONS - 1)], "mae").data[0];
+    expect(small.Y).toBeNull();
+    expect(small["Y__n"]).toBe(MIN_SCORED_PREDICTIONS - 1);
+    expect(accuracyByHorizon([h(MIN_SCORED_PREDICTIONS)], "mae").data[0].Y).toBe(600);
+  });
+
+  it("gates each figure on its own sample: predictions for accuracy, headways for headways", () => {
+    const s = summarizeService([headwayRow([5, 6, 7], { scored_predictions: MIN_SCORED_PREDICTIONS })]);
+    expect(ifEnoughPredictions(s, s.maeSeconds)).toBe(30);
+    expect(ifEnoughHeadways(s, s.avgHeadway)).toBeNull(); // 3 headways < MIN_HEADWAYS
+    const many = summarizeService([headwayRow(Array(MIN_HEADWAYS).fill(6), { scored_predictions: 1 })]);
+    expect(ifEnoughHeadways(many, many.avgHeadway)).toBe(6);
+    expect(ifEnoughPredictions(many, many.maeSeconds)).toBeNull();
   });
 
   it("builds time-of-day series in period order", () => {

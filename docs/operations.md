@@ -78,7 +78,8 @@ FROM workspace.cta_ops.collector_runs ORDER BY started_at_utc DESC LIMIT 24;
 |---|---|---|
 | Job failed email | Job page → failed run → red task → output | Fix the cause, then **Repair run**, which re-runs only the failed tasks and their dependents |
 | `stale` status | `collector_runs`: when was the last run? `data/logs/collector.log` | Wake or start the machine; check the scheduler (`status` / `Get-ScheduledTaskInfo`); test with a 2-minute run |
-| `uploads_disabled_reason` set | Token expired or `.env` wrong | New token (Settings → Developer), update `.env`; files upload on the next run, since nothing is lost locally |
+| `uploads_disabled_reason` set | Token expired or `.env` wrong | New token (Settings → Developer), update `.env` **and** the `DATABRICKS_TOKEN` GitHub secret; files upload on the next run, since nothing is lost locally |
+| Dashboard says "Exported" more than ~3 h ago | Actions → Dashboard: did the scheduled run happen? Open its "Export fresh data from Databricks" step | Missing-secret notice: add `DATABRICKS_HOST`/`DATABRICKS_TOKEN`. Auth error: the token expired; make a new one and update the secret (and `.env`). No recent runs: GitHub disabled the schedule after 60 days without commits; re-enable it |
 | `collector_request_failures` | `collector_runs.failures` (error_type, message) | `CTATransientError`: network or CTA outage, retried automatically. `CTAApiError 101/102`: bad key or daily limit; fix the key or reduce stations/frequency |
 | Run skipped, exit code 3 | Previous run still holds `data/.collector.lock` | Normal if a run overlapped. A lock from a crash is replaced automatically after ~90 min, or delete the file |
 | `silver_backlog` | Silver failed after Bronze succeeded | Re-run the job (or Repair). Silver resumes from its checkpoint |

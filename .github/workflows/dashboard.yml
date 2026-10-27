@@ -1,8 +1,9 @@
 # Builds the React dashboard and publishes it to GitHub Pages.
 # One-time setup: repository Settings -> Pages -> Source: "GitHub Actions".
-# The dashboard reads the committed static export in frontend/public/data; refresh it with
-# `python databricks/export_dashboard_data.py` and push. The map and next-trains board also poll the
-# live-api Vercel function (live-api/, deployed by Vercel on push) and fall back to the export without it.
+# Every non-PR run exports fresh data from Databricks first (needs the DATABRICKS_HOST and
+# DATABRICKS_TOKEN repository secrets); without them, or if the export fails, it builds from the
+# committed export in frontend/public/data. The map and next-trains board also poll the live-api
+# Vercel function (live-api/, deployed by Vercel on push) and fall back to the export without it.
 name: Dashboard
 
 on:
@@ -11,6 +12,10 @@ on:
     paths: ["frontend/**", ".github/workflows/dashboard.yml"]
   pull_request:
     paths: ["frontend/**"]
+  schedule:
+    # Every 2 h at :40 UTC. The Databricks job runs every 2 h at :10 Chicago time, so this lands 30 min
+    # after it on CST and 90 min after it on CDT. GitHub may start scheduled runs late.
+    - cron: "40 */2 * * *"
   workflow_dispatch:
 
 permissions:
@@ -28,6 +33,29 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        if: github.event_name != 'pull_request'
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      # The export writes one file per query, so it goes to a temp dir and replaces the committed files
+      # only if every query succeeded. The token is scoped to this step, away from npm packages.
+      - name: Export fresh data from Databricks
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        working-directory: .
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          if [ -z "$DATABRICKS_TOKEN" ]; then
+            echo "::notice::No DATABRICKS_TOKEN secret; building from the committed export."
+            exit 0
+          fi
+          pip install -r requirements.txt
+          python databricks/export_dashboard_data.py --out "$RUNNER_TEMP/export"
+          cp "$RUNNER_TEMP"/export/*.json frontend/public/data/
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -36,9 +64,10 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm test
-      - run: npm run build
+      # Pages serves the site at /<repo-name>/. GITHUB_REPOSITORY ("owner/name") is set on every
+      # event, unlike github.event.repository, which scheduled runs may not have.
+      - run: VITE_BASE="/${GITHUB_REPOSITORY#*/}/" npm run build
         env:
-          VITE_BASE: /${{ github.event.repository.name }}/
           VITE_LIVE_API_URL: https://cta-transit-live.vercel.app/api/live
       - uses: actions/upload-pages-artifact@v3
         if: github.event_name != 'pull_request'

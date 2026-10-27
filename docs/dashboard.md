@@ -31,8 +31,18 @@ committed. Rebuild them with `python scripts/build_map_geodata.py`.
 
 ## Publishing (GitHub Pages)
 1. Repository **Settings → Pages → Source: GitHub Actions** (one time).
-2. Commit a fresh export (`frontend/public/data`) and push. `.github/workflows/dashboard.yml` tests,
-   builds and deploys to `https://<user>.github.io/<repo>/`.
+2. Add the repository secrets `DATABRICKS_HOST` and `DATABRICKS_TOKEN` (Settings → Secrets and
+   variables → Actions), the same values as in `.env`.
+
+`.github/workflows/dashboard.yml` then runs every 2 hours (and on every push to `frontend/`): it
+exports fresh data from Databricks, tests, builds and deploys to `https://<user>.github.io/<repo>/`.
+Nothing is committed. If the secrets are missing or the export fails (an expired token, the
+warehouse unreachable), the step is skipped and the site builds from the export committed in
+`frontend/public/data`, so committing an export now and then still gives it a recent fallback. Run
+it on demand from the Actions tab (**Dashboard → Run workflow**).
+
+GitHub turns off scheduled workflows in a public repo after 60 days without commits; re-enable
+it from the Actions tab.
 
 ## Live map and board
 The browser can't call CTA itself: CTA sends no CORS headers, and an API key in a static site is

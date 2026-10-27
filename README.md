@@ -42,7 +42,7 @@ mostly 7 AM–5 PM, so evenings, weekends and the Pink and Yellow lines are too 
 
 ```mermaid
 flowchart LR
-    API["CTA Train Tracker API"] --> C["Python collector<br/>(scheduled, retries)"]
+    API["CTA Train Tracker API"] --> C["Python collector<br/>(hourly GitHub Actions run, retries)"]
     C --> R["Raw JSON<br/>(immutable, partitioned)"]
     R --> V["Unity Catalog volume"]
     subgraph DB["Databricks Lakehouse: Lakeflow Job every 2 h"]
@@ -58,8 +58,9 @@ flowchart LR
 ```
 
 Collection runs **outside** Databricks, because Databricks Free Edition restricts outbound internet
-access. The collector and the Databricks Job are connected only through the landing volume, so if
-either one is down the other keeps working, and files simply wait to be processed.
+access. It runs hourly on GitHub Actions, so no machine has to stay on. The collector and the
+Databricks Job are connected only through the landing volume, so if either one is down the other
+keeps working, and files simply wait to be processed.
 
 ## Engineering highlights
 
@@ -113,7 +114,7 @@ in [docs/architecture.md](docs/architecture.md).
 
 | Layer | Tools |
 |---|---|
-| Collection | Python 3.11+, `requests`, `tenacity`, launchd / Task Scheduler |
+| Collection | Python 3.11+, `requests`, `tenacity`, GitHub Actions (scheduled) |
 | Lakehouse | Databricks (Free Edition), Unity Catalog, Delta Lake, Auto Loader, PySpark, Lakeflow Jobs |
 | Dashboard | React, TypeScript, Vite, Tailwind CSS, Recharts, MapLibre GL; Vercel Functions for live data |
 | Quality and delivery | pytest, Vitest, Ruff, oxlint, GitHub Actions, GitHub Pages |

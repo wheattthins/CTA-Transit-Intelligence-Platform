@@ -5,8 +5,8 @@ isn't. Every step is safe to repeat: each layer is idempotent, so **re-running i
 recovery step**.
 
 ```
- your machine (hourly)                         Databricks (every 2 h, Lakeflow Job)
- ─────────────────────                         ─────────────────────────────────────────────
+ GitHub Actions (hourly)                       Databricks (every 2 h, Lakeflow Job)
+ ───────────────────────                       ─────────────────────────────────────────────
  scheduled_collection ──upload every 15 min──► landing volume ──► bronze_ingestion
    ├─ polls CTA every 60 s                                         └► silver_transformation
    ├─ data/raw/**/arrivals_*.json                                     └► gold_metrics
@@ -16,11 +16,39 @@ recovery step**.
 
 ## 1. Set up
 
-### Scheduled collection (your machine)
+### Scheduled collection (GitHub Actions)
+The **Collector** workflow (`.github/workflows/collector.yml`) runs hourly at :10. Each run polls
+every 60 s until the first :30 at least 30 minutes away, uploads to the landing volume every 15
+minutes, and checks that every file got there before the runner is discarded.
+
+GitHub often starts scheduled runs late, so a run ends on the half hour rather than after a fixed
+time. The next run waits in the queue and starts as soon as the previous one finishes. That leaves
+a polling gap of about a minute each hour. A run that GitHub starts more than 20 minutes late adds a
+gap of the extra delay.
+
+| Setting | Where (Settings → Secrets and variables → Actions) |
+|---|---|
+| `CTA_API_KEY`, `DATABRICKS_HOST`, `DATABRICKS_TOKEN` | Secrets |
+| `CTA_STATION_IDS` (optional, default `41320,40380,40900`) | Variables |
+
+| Task | How |
+|---|---|
+| Check | Actions → Collector. Each run's log is in its **Collect** step |
+| Run now | Actions → Collector → **Run workflow**, or `gh workflow run collector.yml` |
+| Pause / resume | `gh workflow disable collector.yml` / `gh workflow enable collector.yml` |
+
+Runs are free because the repository is public. That's about 24 runner-hours a day, far more than a
+private repository's free minutes. GitHub disables scheduled workflows after 60 days without a
+commit; re-enable them on the Actions page.
+
+### Scheduled collection on your own machine (alternative)
 | OS | Install | Remove | Check |
 |---|---|---|---|
 | Windows | `.\scripts\schedule_collection_windows.ps1` | `... -Unregister` | `Get-ScheduledTaskInfo -TaskName "CTA Collector"` |
 | macOS | `scripts/schedule_collection_macos.sh install` | `... uninstall` | `... status` |
+
+**Don't run this and the Collector workflow at the same time.** Every poll is a separate
+observation, so two collectors double-count polls.
 
 Each hourly run is a 59-minute session, so consecutive runs leave one normal polling gap at the
 boundary. The machine must be on and logged in. Laptop sleep shows up as stale data and coverage
@@ -63,7 +91,7 @@ FROM workspace.cta_ops.pipeline_runs ORDER BY checked_at_utc DESC LIMIT 12;
 |---|---|---|
 | `healthy` | All tasks succeeded, data is fresh, no warnings | |
 | `degraded` | Working, with warnings: rejects > 5%, API success < 90%, collector failures > 5%, upload failures | CTA outage, network trouble |
-| `stale` | Pipeline fine, but no new observation for > 3 h | Collector machine off or asleep, or the scheduler isn't running |
+| `stale` | Pipeline fine, but no new observation for > 3 h | Collector workflow failing or disabled (or, for a local collector, the machine is off or asleep) |
 | `failed` | An upstream task failed, Silver is behind Bronze, or there's no data at all | See section 3 |
 
 Collector-side failures (requests that never produced a file):
@@ -77,10 +105,11 @@ FROM workspace.cta_ops.collector_runs ORDER BY started_at_utc DESC LIMIT 24;
 | Symptom | Diagnose | Fix |
 |---|---|---|
 | Job failed email | Job page → failed run → red task → output | Fix the cause, then **Repair run**, which re-runs only the failed tasks and their dependents |
-| `stale` status | `collector_runs`: when was the last run? `data/logs/collector.log` | Wake or start the machine; check the scheduler (`status` / `Get-ScheduledTaskInfo`); test with a 2-minute run |
-| `uploads_disabled_reason` set | Token expired or `.env` wrong | New token (Settings → Developer), update `.env` **and** the `DATABRICKS_TOKEN` GitHub secret; files upload on the next run, since nothing is lost locally |
+| `stale` status | Actions → Collector: are runs failing, or not running at all? Open the latest run's **Collect** step | Fix the cause (usually a secret), then **Run workflow** to test. No recent runs: GitHub disabled the schedule after 60 days without commits; re-enable it. Local collector: wake or start the machine, check the scheduler (`status` / `Get-ScheduledTaskInfo`), and test with a 2-minute run |
+| `uploads_disabled_reason` set, or Collector runs fail in "Upload anything not yet in Databricks" | Token expired or wrong | New token (Settings → Developer), update the `DATABRICKS_TOKEN` GitHub secret (and `.env`, if you collect locally). Then restore the files those runs kept (next row) |
+| A failed Collector run has a `raw-data-<run id>` artifact | Its files never reached Databricks | Once uploads work again: `gh run download <run id> -n raw-data-<run id> -D data/raw`, then `python -m backend.uploaders.volume_uploader`. Artifacts expire after 14 days |
 | Dashboard says "Exported" more than ~3 h ago | Actions → Dashboard: did the scheduled run happen? Open its "Export fresh data from Databricks" step | Missing-secret notice: add `DATABRICKS_HOST`/`DATABRICKS_TOKEN`. Auth error: the token expired; make a new one and update the secret (and `.env`). No recent runs: GitHub disabled the schedule after 60 days without commits; re-enable it |
-| `collector_request_failures` | `collector_runs.failures` (error_type, message) | `CTATransientError`: network or CTA outage, retried automatically. `CTAApiError 101/102`: bad key or daily limit; fix the key or reduce stations/frequency |
+| `collector_request_failures` | `collector_runs.failures` (error_type, message) | `CTATransientError`: network or CTA outage, retried automatically. `CTAApiError 101/102`: bad key or daily limit; fix the `CTA_API_KEY` secret or reduce stations/frequency |
 | Run skipped, exit code 3 | Previous run still holds `data/.collector.lock` | Normal if a run overlapped. A lock from a crash is replaced automatically after ~90 min, or delete the file |
 | `silver_backlog` | Silver failed after Bronze succeeded | Re-run the job (or Repair). Silver resumes from its checkpoint |
 | Bronze fails reading files | Error mentions a file or checkpoint | Re-run. If the checkpoint is corrupt, run `bronze_ingestion` with `reset = true`; MERGE prevents duplicates |

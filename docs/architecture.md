@@ -4,13 +4,13 @@
 
 ```
  CTA APIs ──► Python collectors ──► raw JSON files ──► Databricks Bronze ──► Silver ──► Gold ──► React dashboard
-             (local / scheduled)   (immutable,         (Delta, append,      (clean,    (KPIs)
+             (GitHub Actions)      (immutable,         (Delta, append,      (clean,    (KPIs)
                                     partitioned)        source metadata)     dedup)
 ```
 
 Collection is kept **outside** Databricks. Free Edition restricts outbound internet access,
-and decoupling means a Databricks outage never loses observations: files queue up locally and
-are ingested later.
+and decoupling means a Databricks outage doesn't stop collection: files wait in the landing
+volume, or, if the upload itself fails, in a workflow artifact, and are ingested later.
 
 ## Phase 1 decisions
 
@@ -261,9 +261,17 @@ small (serverless can't cache). At larger scale, recompute only recent service d
 ## Phase 5 decisions: automation and reliability
 
 **Two schedulers, joined by the landing volume.** Collection must run outside Databricks (Free
-Edition restricts outbound internet), so a local scheduler (Task Scheduler or launchd) runs
-`scheduled_collection` hourly, and a Lakeflow Job processes whatever has landed every 2 hours.
-Neither depends on the other being up. Files simply wait.
+Edition restricts outbound internet), so a GitHub Actions workflow runs `scheduled_collection`
+hourly, and a Lakeflow Job processes whatever has landed every 2 hours. Neither depends on the
+other being up. Files simply wait. (Task Scheduler and launchd scripts can run the collector on
+your own machine instead.)
+
+**Collecting on a runner that starts late and forgets everything.** GitHub starts scheduled runs
+late, sometimes by 20 minutes or more, so sessions end on the clock (`--end-at-minute`) instead of
+after a fixed time. The concurrency group queues the next run behind the current one instead of
+cancelling either, so it starts where the last one stopped. The runner's disk is discarded after the
+job, so a final step re-checks that every file reached the volume. If any didn't, the run fails and
+keeps the files as an artifact.
 
 **Collector reliability.** Hour-long bounded sessions (not a forever-loop) mean a crash costs at
 most one hour, and memory or connection state resets regularly. A lock file prevents overlap,
@@ -289,7 +297,8 @@ checkpoint + MERGE (Bronze) → stream checkpoint + MERGE (Silver) → atomic fu
 row per job run to `cta_ops.pipeline_runs`: task results (via task values), freshness, 24-hour volume,
 API success, reject rate, coverage, Silver backlog and collector failures. Status rules live in a
 pure function (`evaluate_health`) with unit tests. Staleness doesn't fail the job by default,
-because a laptop collector legitimately stops overnight. Set `fail_on_stale` for an always-on collector.
+because a laptop collector legitimately stops overnight. Set `fail_on_stale` for an always-on collector
+like the GitHub Actions one.
 
 ## Roadmap
 1. **Collector** (done)

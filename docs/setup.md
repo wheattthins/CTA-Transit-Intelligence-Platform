@@ -187,7 +187,11 @@ python -m pytest databricks/tests -v
 ## Running unattended (Phase 5)
 
 ```powershell
-# Your machine: hourly collection with uploads every 15 minutes
+# GitHub Actions: hourly collection with uploads every 15 minutes (.github/workflows/collector.yml)
+gh secret set CTA_API_KEY                        # plus DATABRICKS_HOST and DATABRICKS_TOKEN
+gh workflow run collector.yml                    # test run; it then runs every hour
+
+# Or on your machine instead (never both: two collectors double-count polls)
 .\scripts\schedule_collection_windows.ps1        # Windows Task Scheduler
 scripts/schedule_collection_macos.sh install     # macOS launchd
 

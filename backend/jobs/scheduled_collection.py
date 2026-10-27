@@ -1,9 +1,11 @@
 """Scheduled collection: one bounded session, periodic uploads, and a run summary.
 
-Designed to be started every hour by Windows Task Scheduler, macOS launchd or cron:
+Designed to be started every hour by GitHub Actions (.github/workflows/collector.yml), Windows Task
+Scheduler, macOS launchd or cron:
 
     python -m backend.jobs.scheduled_collection                       # 59-minute session
     python -m backend.jobs.scheduled_collection --duration-minutes 29 --upload-every-minutes 10
+    python -m backend.jobs.scheduled_collection --end-at-minute 30    # until the first HH:30 >= 30 min away
     python -m backend.jobs.scheduled_collection --no-upload           # collect only
 
 What one run does:
@@ -16,7 +18,9 @@ What one run does:
      Databricks (``cta_ops.collector_runs``).
 
 A 59-minute session started hourly polls at :00 through :59, so consecutive runs leave about
-one interval between polls and no coverage gap.
+one interval between polls and no coverage gap. Schedulers that start runs late (GitHub Actions)
+use ``--end-at-minute`` instead: every run ends at the same minute however late it started, and the
+next run, queued behind it, starts there.
 
 Exit codes: 0 all requests succeeded; 1 some failed; 2 configuration error; 3 skipped (already running).
 """
@@ -31,7 +35,7 @@ import time
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +66,17 @@ logger = logging.getLogger("cta.scheduled")
 EXIT_SKIPPED = 3
 LOCK_PATH = PROJECT_ROOT / "data" / ".collector.lock"
 LOG_PATH = PROJECT_ROOT / "data" / "logs" / "collector.log"
+MIN_SESSION_MINUTES = 30  # --end-at-minute never ends a session sooner than this
+
+
+def minutes_until_end(end_minute: int, now: datetime, min_minutes: float = MIN_SESSION_MINUTES) -> float:
+    """Minutes from ``now`` to the first HH:``end_minute`` that is at least ``min_minutes`` away."""
+    if not 0 <= end_minute <= 59:
+        raise SettingsError(f"--end-at-minute must be between 0 and 59 (got {end_minute}).")
+    end = now.replace(minute=end_minute, second=0, microsecond=0)
+    while end - now < timedelta(minutes=min_minutes):
+        end += timedelta(hours=1)
+    return (end - now).total_seconds() / 60
 
 
 # --------------------------------------------------------------------------- uploads
@@ -196,7 +211,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         prog="python -m backend.jobs.scheduled_collection",
         description="One scheduled collection session with periodic uploads to Databricks.",
     )
-    p.add_argument("--duration-minutes", type=float, default=59, help="Session length (default 59 for hourly schedules).")
+    length = p.add_mutually_exclusive_group()
+    length.add_argument("--duration-minutes", type=float, default=59, help="Session length (default 59 for hourly schedules).")
+    length.add_argument(
+        "--end-at-minute", type=int, metavar="MM",
+        help=f"End at the first HH:MM at least {MIN_SESSION_MINUTES} minutes away, for schedulers that start runs late.",
+    )
     p.add_argument("-i", "--interval", type=int, help="Seconds between polls (default: CTA_POLL_INTERVAL_SECONDS).")
     p.add_argument("-s", "--station", action="append", metavar="MAPID", help="Override CTA_STATION_IDS.")
     p.add_argument("--upload-every-minutes", type=float, default=15, help="Upload cadence during the session.")
@@ -243,7 +263,12 @@ def main(
     try:
         station_ids = parse_station_ids(",".join(args.station)) if args.station else settings.station_ids
         interval = validate_poll_interval(args.interval) if args.interval is not None else settings.poll_interval_seconds
-        iterations = resolve_iterations(argparse.Namespace(duration_minutes=args.duration_minutes, iterations=None), interval)
+        duration_minutes = (
+            minutes_until_end(args.end_at_minute, datetime.now(UTC))
+            if args.end_at_minute is not None
+            else args.duration_minutes
+        )
+        iterations = resolve_iterations(argparse.Namespace(duration_minutes=duration_minutes, iterations=None), interval)
         source = source or CTAClient(
             settings.require_api_key(),
             base_url=settings.arrivals_url,
@@ -255,7 +280,7 @@ def main(
         return EXIT_CONFIG_ERROR
 
     # A lock older than the session plus a margin can only be left over from a crash.
-    lock = RunLock(lock_path, stale_after_seconds=args.duration_minutes * 60 + 1800)
+    lock = RunLock(lock_path, stale_after_seconds=duration_minutes * 60 + 1800)
     if not lock.acquire():
         logger.warning("Another collection run holds %s; skipping this run.", lock_path)
         return EXIT_SKIPPED

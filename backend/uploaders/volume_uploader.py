@@ -1,6 +1,7 @@
 """Upload raw observation files to a Databricks Unity Catalog volume (the Bronze landing zone).
 
-Collection runs locally because Databricks Free Edition limits outbound internet access.
+Collection runs outside Databricks (GitHub Actions, or your machine) because Databricks Free Edition
+limits outbound internet access.
 This script moves the raw JSON files into the lakehouse, where the Bronze notebook ingests them.
 
     python -m backend.uploaders.volume_uploader --dry-run   # show what would be uploaded

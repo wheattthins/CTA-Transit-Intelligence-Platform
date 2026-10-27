@@ -1,0 +1,64 @@
+# Collects CTA arrivals in the cloud: polls the configured stations every 60 s and uploads the files to the
+# Databricks landing volume (backend/jobs/scheduled_collection.py), so no machine has to stay on.
+# Needs the CTA_API_KEY, DATABRICKS_HOST and DATABRICKS_TOKEN repository secrets. The CTA_STATION_IDS
+# repository variable overrides the stations.
+name: Collector
+
+on:
+  schedule:
+    # Hourly at :10 (GitHub delays runs most at the top of the hour, and may start any run late).
+    # Each run collects until the first :30 at least 30 min away, so a late start still ends on the
+    # half hour; the next run waits in the concurrency queue and starts as it finishes. Polling stays
+    # continuous unless GitHub starts a run more than 20 min late.
+    - cron: "10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Queue, never cancel: a cancelled run would lose the files it hasn't uploaded yet.
+concurrency:
+  group: collector
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110 # sessions last 30-90 min
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install -r requirements.txt
+      # Secrets are scoped to the steps that use them, away from package installs.
+      - name: Collect
+        env:
+          CTA_API_KEY: ${{ secrets.CTA_API_KEY }}
+          CTA_STATION_IDS: ${{ vars.CTA_STATION_IDS || '41320,40380,40900' }}
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: python -m backend.jobs.scheduled_collection --end-at-minute 30
+      # The runner's disk is discarded when the job ends. The collector already uploaded as it went; this
+      # retries anything that failed (it skips files already in the volume) and fails the job if a file
+      # still isn't there.
+      - name: Upload anything not yet in Databricks
+        id: sync
+        if: always()
+        timeout-minutes: 10
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: python -m backend.uploaders.volume_uploader
+      # Last resort, so a Databricks outage or expired token doesn't lose data: download the artifact into
+      # data/raw and run `python -m backend.uploaders.volume_uploader` (docs/operations.md).
+      - name: Keep files that didn't reach Databricks
+        if: always() && steps.sync.outcome != 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-data-${{ github.run_id }}
+          path: data/raw/
+          retention-days: 14
+          if-no-files-found: ignore

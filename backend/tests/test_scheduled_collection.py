@@ -1,6 +1,9 @@
 import json
 import os
 import time
+from datetime import UTC, datetime
+
+import pytest
 
 from backend.collectors import train_tracker as tt
 from backend.config.settings import Settings
@@ -157,3 +160,39 @@ def test_summary_contains_no_api_key(tmp_path):
     _run(tmp_path, ["--duration-minutes", "1", "--no-upload"], source=FlakySource(fail_calls={1}))
     text = next((tmp_path / "raw" / "collector_runs").rglob("*.json")).read_text()
     assert "unused" not in text  # the api_key value in _settings
+
+
+def _at(hh, mm, ss=0):
+    return datetime(2026, 10, 27, hh, mm, ss, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("now", "minutes"),
+    [
+        (_at(13, 12), 78),         # started on time: runs past the next :30
+        (_at(14, 30, 30), 59.5),   # queued behind the previous run: one hour
+        (_at(13, 45), 45),         # started 35 min late: ends at the next :30 anyway
+        (_at(13, 0), 30),          # exactly the minimum
+        (_at(13, 5), 85),          # 25 min short of :30 is too short a session
+    ],
+)
+def test_end_at_minute_ends_at_first_boundary_far_enough_away(now, minutes):
+    assert sc.minutes_until_end(30, now) == pytest.approx(minutes)
+
+
+def test_end_at_minute_sets_session_length(tmp_path):
+    code, _ = _run(tmp_path, ["--end-at-minute", "30", "--no-upload"])
+    assert code == sc.EXIT_OK
+    # a 30-90 minute session at a 60 s interval polls 31-91 times
+    assert 31 <= _summary(tmp_path)["requests"] <= 91
+
+
+@pytest.mark.parametrize("minute", ["60", "-1"])
+def test_end_at_minute_out_of_range_is_a_config_error(tmp_path, minute):
+    code, store = _run(tmp_path, ["--end-at-minute", minute])
+    assert code == sc.EXIT_CONFIG_ERROR and store.uploads == []
+
+
+def test_end_at_minute_and_duration_are_exclusive(tmp_path):
+    with pytest.raises(SystemExit):
+        _run(tmp_path, ["--end-at-minute", "30", "--duration-minutes", "10"])

@@ -31,7 +31,7 @@ data/raw/*.json ──(volume_uploader)──► /Volumes/workspace/cta_bronze/l
    `https://dbc-1234abcd-5678.cloud.databricks.com`.
 
 Free Edition limits that shape this design: serverless compute only, restricted outbound
-internet (which is why collection runs on your machine), one SQL warehouse, 5 concurrent job tasks,
+internet (which is why collection runs on GitHub Actions), one SQL warehouse, 5 concurrent job tasks,
 and a daily fair-use quota.
 
 ## 2. Create a personal access token (you)

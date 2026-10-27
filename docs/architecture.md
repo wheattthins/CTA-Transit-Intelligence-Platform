@@ -266,10 +266,11 @@ hourly, and a Lakeflow Job processes whatever has landed every 2 hours. Neither 
 other being up. Files simply wait. (Task Scheduler and launchd scripts can run the collector on
 your own machine instead.)
 
-**Collecting on a runner that starts late and forgets everything.** GitHub starts scheduled runs
-late, sometimes by 20 minutes or more, so sessions end on the clock (`--end-at-minute`) instead of
-after a fixed time. The concurrency group queues the next run behind the current one instead of
-cancelling either, so it starts where the last one stopped. The runner's disk is discarded after the
+**Collecting on a runner that forgets everything.** GitHub's schedule trigger delays and drops
+runs, so it can't keep collection continuous. Instead each Collector run queues its successor as it
+starts, and the concurrency group holds that run until the current one finishes. A watchdog on a
+schedule restarts the chain only if no run is in progress or queued. Sessions end on the clock
+(`--end-at-minute`) rather than after a fixed time, so runs hand over on the half hour. The runner's disk is discarded after the
 job, so a final step re-checks that every file reached the volume. If any didn't, the run fails and
 keeps the files as an artifact.
 

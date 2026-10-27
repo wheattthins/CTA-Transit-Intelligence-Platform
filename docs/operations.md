@@ -17,14 +17,15 @@ recovery step**.
 ## 1. Set up
 
 ### Scheduled collection (GitHub Actions)
-The **Collector** workflow (`.github/workflows/collector.yml`) runs hourly at :10. Each run polls
-every 60 s until the first :30 at least 30 minutes away, uploads to the landing volume every 15
-minutes, and checks that every file got there before the runner is discarded.
+The **Collector** workflow (`.github/workflows/collector.yml`) runs continuously as a chain of runs.
+Each run polls every 60 s until the first :30 at least 30 minutes away, uploads to the landing
+volume every 15 minutes, and checks that every file got there before the runner is discarded.
 
-GitHub often starts scheduled runs late, so a run ends on the half hour rather than after a fixed
-time. The next run waits in the queue and starts as soon as the previous one finishes. That leaves
-a polling gap of about a minute each hour. A run that GitHub starts more than 20 minutes late adds a
-gap of the extra delay.
+Each run queues the next one as soon as it starts, and the queued run starts when the current one
+finishes, so runs hand over on the half hour with about a minute between polls. Runs don't depend
+on GitHub's schedule trigger, which delays and drops runs. The **Collector watchdog**
+(`collector-watchdog.yml`) is scheduled at :20 and :50. It starts a Collector run only when none is
+in progress or queued, for example after a cancelled run or a failed hand-off.
 
 | Setting | Where (Settings → Secrets and variables → Actions) |
 |---|---|
@@ -33,13 +34,14 @@ gap of the extra delay.
 
 | Task | How |
 |---|---|
-| Check | Actions → Collector. Each run's log is in its **Collect** step |
-| Run now | Actions → Collector → **Run workflow**, or `gh workflow run collector.yml` |
-| Pause / resume | `gh workflow disable collector.yml` / `gh workflow enable collector.yml` |
+| Check | Actions → Collector: one run in progress and one queued. Each run's log is in its **Collect** step |
+| Start | `gh workflow run collector.yml`, or wait for the watchdog |
+| Pause | `gh workflow disable collector-watchdog.yml`, `gh workflow disable collector.yml`, then cancel the queued Collector run |
+| Resume | Enable both workflows, then `gh workflow run collector.yml` |
 
 Runs are free because the repository is public. That's about 24 runner-hours a day, far more than a
 private repository's free minutes. GitHub disables scheduled workflows after 60 days without a
-commit; re-enable them on the Actions page.
+commit. That stops only the watchdog, but re-enable it on the Actions page.
 
 ### Scheduled collection on your own machine (alternative)
 | OS | Install | Remove | Check |
@@ -105,7 +107,7 @@ FROM workspace.cta_ops.collector_runs ORDER BY started_at_utc DESC LIMIT 24;
 | Symptom | Diagnose | Fix |
 |---|---|---|
 | Job failed email | Job page → failed run → red task → output | Fix the cause, then **Repair run**, which re-runs only the failed tasks and their dependents |
-| `stale` status | Actions → Collector: are runs failing, or not running at all? Open the latest run's **Collect** step | Fix the cause (usually a secret), then **Run workflow** to test. No recent runs: GitHub disabled the schedule after 60 days without commits; re-enable it. Local collector: wake or start the machine, check the scheduler (`status` / `Get-ScheduledTaskInfo`), and test with a 2-minute run |
+| `stale` status | Actions → Collector: are runs failing, or not running at all? Open the latest run's **Collect** step | Fix the cause (usually a secret), then **Run workflow** to test. No recent runs: check that both Collector workflows are enabled, then `gh workflow run collector.yml`. Local collector: wake or start the machine, check the scheduler (`status` / `Get-ScheduledTaskInfo`), and test with a 2-minute run |
 | `uploads_disabled_reason` set, or Collector runs fail in "Upload anything not yet in Databricks" | Token expired or wrong | New token (Settings → Developer), update the `DATABRICKS_TOKEN` GitHub secret (and `.env`, if you collect locally). Then restore the files those runs kept (next row) |
 | A failed Collector run has a `raw-data-<run id>` artifact | Its files never reached Databricks | Once uploads work again: `gh run download <run id> -n raw-data-<run id> -D data/raw`, then `python -m backend.uploaders.volume_uploader`. Artifacts expire after 14 days |
 | Dashboard says "Exported" more than ~3 h ago | Actions → Dashboard: did the scheduled run happen? Open its "Export fresh data from Databricks" step | Missing-secret notice: add `DATABRICKS_HOST`/`DATABRICKS_TOKEN`. Auth error: the token expired; make a new one and update the secret (and `.env`). No recent runs: GitHub disabled the schedule after 60 days without commits; re-enable it |

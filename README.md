@@ -42,7 +42,7 @@ mostly 7 AM–5 PM, so evenings, weekends and the Pink and Yellow lines are too 
 
 ```mermaid
 flowchart LR
-    API["CTA Train Tracker API"] --> C["Python collector<br/>(hourly GitHub Actions run, retries)"]
+    API["CTA Train Tracker API"] --> C["Python collector<br/>(GitHub Actions, retries)"]
     C --> R["Raw JSON<br/>(immutable, partitioned)"]
     R --> V["Unity Catalog volume"]
     subgraph DB["Databricks Lakehouse: Lakeflow Job every 2 h"]
@@ -58,9 +58,9 @@ flowchart LR
 ```
 
 Collection runs **outside** Databricks, because Databricks Free Edition restricts outbound internet
-access. It runs hourly on GitHub Actions, so no machine has to stay on. The collector and the
-Databricks Job are connected only through the landing volume, so if either one is down the other
-keeps working, and files simply wait to be processed.
+access. It runs on GitHub Actions as back-to-back hour-long runs, so no machine has to stay on.
+The collector and the Databricks Job are connected only through the landing volume, so if either
+one is down the other keeps working, and files simply wait to be processed.
 
 ## Engineering highlights
 

@@ -189,7 +189,7 @@ python -m pytest databricks/tests -v
 ```powershell
 # GitHub Actions: hourly collection with uploads every 15 minutes (.github/workflows/collector.yml)
 gh secret set CTA_API_KEY                        # plus DATABRICKS_HOST and DATABRICKS_TOKEN
-gh workflow run collector.yml                    # test run; it then runs every hour
+gh workflow run collector.yml                    # starts it; each run queues the next
 
 # Or on your machine instead (never both: two collectors double-count polls)
 .\scripts\schedule_collection_windows.ps1        # Windows Task Scheduler

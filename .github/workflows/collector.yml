@@ -2,21 +2,23 @@
 # Databricks landing volume (backend/jobs/scheduled_collection.py), so no machine has to stay on.
 # Needs the CTA_API_KEY, DATABRICKS_HOST and DATABRICKS_TOKEN repository secrets. The CTA_STATION_IDS
 # repository variable overrides the stations.
+#
+# Runs chain themselves: each run queues the next one as it starts, and the concurrency group holds that
+# run until this one finishes. A run collects until the first :30 at least 30 min away, so runs hand over
+# on the half hour, about a minute between polls. GitHub's schedule trigger can't drive this: it delays
+# and drops runs. collector-watchdog.yml only restarts the chain if it breaks.
+# To stop collecting, disable this workflow and the watchdog, then cancel the queued Collector run.
 name: Collector
 
 on:
-  schedule:
-    # Hourly at :10 (GitHub delays runs most at the top of the hour, and may start any run late).
-    # Each run collects until the first :30 at least 30 min away, so a late start still ends on the
-    # half hour; the next run waits in the concurrency queue and starts as it finishes. Polling stays
-    # continuous unless GitHub starts a run more than 20 min late.
-    - cron: "10 * * * *"
   workflow_dispatch:
 
 permissions:
+  actions: write # to queue the next run
   contents: read
 
-# Queue, never cancel: a cancelled run would lose the files it hasn't uploaded yet.
+# Queue, never cancel: a cancelled run would lose the files it hasn't uploaded yet. Only one run waits in
+# the queue; queuing another replaces it.
 concurrency:
   group: collector
   cancel-in-progress: false
@@ -26,6 +28,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 110 # sessions last 30-90 min
     steps:
+      # Events caused by the workflow's own token start no runs, except workflow_dispatch. A failure here
+      # mustn't stop this run from collecting; the watchdog restarts the chain.
+      - name: Queue the next run
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run collector.yml --ref main || { sleep 30; gh workflow run collector.yml --ref main; }
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:

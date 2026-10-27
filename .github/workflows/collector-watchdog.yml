@@ -1,0 +1,30 @@
+# Restarts the Collector if its chain of runs has stopped (a failed hand-off or a cancelled run). Each
+# Collector run queues its own successor, so this normally finds a run in progress and does nothing.
+# GitHub delays and drops scheduled runs, so this checks often enough that one usually gets through.
+name: Collector watchdog
+
+on:
+  schedule:
+    - cron: "20,50 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write # to start the Collector
+
+jobs:
+  restart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Start the Collector unless a run is in progress or queued
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          active=$(gh run list --workflow collector.yml --limit 5 --json status -q '[.[] | select(.status != "completed")] | length')
+          if [ "$active" -gt 0 ]; then
+            echo "Collector has $active run(s) in progress or queued; nothing to do."
+          else
+            echo "::warning::No Collector run in progress or queued; starting one."
+            gh workflow run collector.yml --ref main
+          fi

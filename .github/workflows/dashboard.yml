@@ -1,8 +1,9 @@
 # Builds the React dashboard and publishes it to GitHub Pages.
 # One-time setup: repository Settings -> Pages -> Source: "GitHub Actions".
 # Every non-PR run exports fresh data from Databricks first (needs the DATABRICKS_HOST and
-# DATABRICKS_TOKEN repository secrets); without them, or if the export fails, it builds from the
-# committed export in frontend/public/data. The map and next-trains board also poll the live-api
+# DATABRICKS_TOKEN repository secrets). If the export fails, it reuses the data the live site
+# already serves; without the secrets, or failing that, it builds from the committed export in
+# frontend/public/data. The map and next-trains board also poll the live-api
 # Vercel function (live-api/, deployed by Vercel on push) and fall back to the export without it.
 name: Dashboard
 
@@ -42,6 +43,7 @@ jobs:
       # The export writes one file per query, so it goes to a temp dir and replaces the committed files
       # only if every query succeeded. The token is scoped to this step, away from npm packages.
       - name: Export fresh data from Databricks
+        id: export
         if: github.event_name != 'pull_request'
         continue-on-error: true
         working-directory: .
@@ -56,6 +58,30 @@ jobs:
           pip install -r requirements.txt
           python databricks/export_dashboard_data.py --out "$RUNNER_TEMP/export"
           cp "$RUNNER_TEMP"/export/*.json frontend/public/data/
+      # CI exports are never committed, so the committed one can be weeks old. When Databricks is down
+      # (e.g. the Free Edition quota), rebuild from the data the live site already serves, if newer, so
+      # the dashboard stays frozen at its last export instead of rolling back.
+      - name: Keep the live site's data
+        if: github.event_name != 'pull_request' && steps.export.outcome == 'failure'
+        continue-on-error: true
+        working-directory: .
+        run: |
+          echo "::warning::The Databricks export failed; see the step above."
+          base="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}/data"
+          live="$RUNNER_TEMP/live"
+          mkdir -p "$live"
+          curl -fsSL "$base/manifest.json" -o "$live/manifest.json"
+          if ! jq -e --slurpfile c frontend/public/data/manifest.json \
+              '.schema_version == $c[0].schema_version and .exported_at_ms > $c[0].exported_at_ms' \
+              "$live/manifest.json" > /dev/null; then
+            echo "The live site's data is no newer than the committed export; building from that."
+            exit 0
+          fi
+          for name in $(jq -r '.files | keys[]' "$live/manifest.json"); do
+            curl -fsSL "$base/$name.json" -o "$live/$name.json"
+          done
+          cp "$live"/*.json frontend/public/data/
+          echo "Building from the live site's export (service dates to $(jq -r .last_service_date "$live/manifest.json"))."
       - uses: actions/setup-node@v4
         with:
           node-version: 22

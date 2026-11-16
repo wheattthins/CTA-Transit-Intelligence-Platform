@@ -36,6 +36,8 @@ committed. Rebuild them with `python scripts/build_map_geodata.py`.
 
 `.github/workflows/dashboard.yml` then runs every 2 hours (and on every push to `frontend/`): it
 exports fresh data from Databricks, tests, builds and deploys to `https://<user>.github.io/<repo>/`.
+The Collector workflow starts those runs, on the half hour after each Databricks job. The
+workflow's own schedule is only a fallback, because GitHub drops most scheduled runs.
 Nothing is committed. If the secrets are missing or the export fails (an expired token, the
 warehouse unreachable), the step is skipped and the site builds from the export committed in
 `frontend/public/data`, so committing an export now and then still gives it a recent fallback. Run

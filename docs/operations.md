@@ -27,6 +27,10 @@ on GitHub's schedule trigger, which delays and drops runs. The **Collector watch
 (`collector-watchdog.yml`) is scheduled at :20 and :50. It starts a Collector run only when none is
 in progress or queued, for example after a cancelled run or a failed hand-off.
 
+The chain also keeps the dashboard fresh. A run that starts in an even hour, Chicago time, starts
+the **Dashboard** workflow (`dashboard.yml`), about 20 minutes after the Lakeflow Job. While the
+Collector is paused, the dashboard refreshes only on its own schedule, a few times a day.
+
 | Setting | Where (Settings → Secrets and variables → Actions) |
 |---|---|
 | `CTA_API_KEY`, `DATABRICKS_HOST`, `DATABRICKS_TOKEN` | Secrets |
@@ -110,7 +114,7 @@ FROM workspace.cta_ops.collector_runs ORDER BY started_at_utc DESC LIMIT 24;
 | `stale` status | Actions → Collector: are runs failing, or not running at all? Open the latest run's **Collect** step | Fix the cause (usually a secret), then **Run workflow** to test. No recent runs: check that both Collector workflows are enabled, then `gh workflow run collector.yml`. Local collector: wake or start the machine, check the scheduler (`status` / `Get-ScheduledTaskInfo`), and test with a 2-minute run |
 | `uploads_disabled_reason` set, or Collector runs fail in "Upload anything not yet in Databricks" | Token expired or wrong | New token (Settings → Developer), update the `DATABRICKS_TOKEN` GitHub secret (and `.env`, if you collect locally). Then restore the files those runs kept (next row) |
 | A failed Collector run has a `raw-data-<run id>` artifact | Its files never reached Databricks | Once uploads work again: `gh run download <run id> -n raw-data-<run id> -D data/raw`, then `python -m backend.uploaders.volume_uploader`. Artifacts expire after 14 days |
-| Dashboard says "Exported" more than ~3 h ago | Actions → Dashboard: did the scheduled run happen? Open its "Export fresh data from Databricks" step | Missing-secret notice: add `DATABRICKS_HOST`/`DATABRICKS_TOKEN`. Auth error: the token expired; make a new one and update the secret (and `.env`). `BadRequest: The request could not be processed by the warehouse`: Databricks compute is shut off, usually the quota ("Quota exceeded" below); the site keeps its last export until it's back. No recent runs: GitHub disabled the schedule after 60 days without commits; re-enable it |
+| Dashboard says "Exported" more than ~3 h ago | Actions → Dashboard: is there a run from the last 2 h? Open its "Export fresh data from Databricks" step. No run: open the latest Collector run's "Refresh the dashboard" step | To publish now: `gh workflow run dashboard.yml`. Missing-secret notice: add `DATABRICKS_HOST`/`DATABRICKS_TOKEN`. Auth error: the token expired; make a new one and update the secret (and `.env`). `BadRequest: The request could not be processed by the warehouse`: Databricks compute is shut off, usually the quota ("Quota exceeded" below); the site keeps its last export until it's back. No recent runs: GitHub disabled the schedule after 60 days without commits; re-enable it |
 | `collector_request_failures` | `collector_runs.failures` (error_type, message) | `CTATransientError`: network or CTA outage, retried automatically. `CTAApiError 101/102`: bad key or daily limit; fix the `CTA_API_KEY` secret or reduce stations/frequency |
 | Run skipped, exit code 3 | Previous run still holds `data/.collector.lock` | Normal if a run overlapped. A lock from a crash is replaced automatically after ~90 min, or delete the file |
 | `silver_backlog` | Silver failed after Bronze succeeded | Re-run the job (or Repair). Silver resumes from its checkpoint |

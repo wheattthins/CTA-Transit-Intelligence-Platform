@@ -13,11 +13,13 @@ on:
     paths: ["frontend/**", ".github/workflows/dashboard.yml"]
   pull_request:
     paths: ["frontend/**"]
-  schedule:
-    # Every 2 h at :40 UTC. The Databricks job runs every 2 h at :10 Chicago time, so this lands 30 min
-    # after it on CST and 90 min after it on CDT. GitHub may start scheduled runs late.
-    - cron: "40 */2 * * *"
+  # The Collector workflow starts a run every 2 h, on the half hour after the Databricks job (which runs
+  # every 2 h at :10 Chicago time).
   workflow_dispatch:
+  schedule:
+    # Fallback for when the Collector is stopped. GitHub drops most scheduled runs (3-4 a day get
+    # through), so this can't keep the site fresh on its own.
+    - cron: "40 */2 * * *"
 
 permissions:
   contents: read
